@@ -1,0 +1,551 @@
+root@b091a24695cc:~/os161/root# sys161 kernel
+sys161: System/161 release 2.0.3, compiled Sep  9 2025 18:53:34
+
+OS/161 base system version 1.99.08
+Copyright (c) 2000, 2001-2005, 2008-2011, 2013, 2014
+   President and Fellows of Harvard College.  All rights reserved.
+
+Put-your-group-name-here's system version 0 (DUMBVM #2)
+
+292k physical memory available
+Device probe...
+lamebus0 (system main bus)
+emu0 at lamebus0
+ltrace0 at lamebus0
+ltimer0 at lamebus0
+beep0 at ltimer0
+rtclock0 at ltimer0
+lrandom0 at lamebus0
+random0 at lrandom0
+lhd0 at lamebus0
+lhd1 at lamebus0
+lser0 at lamebus0
+con0 at lser0
+
+cpu0: MIPS/161 (System/161 2.x) features 0x0
+OS/161 kernel [? for menu]: 
+
+
+
+
+
+lkim0@LAPTOP-G925UH30:~/home/OS161_BASE/os161-cpen331-docker/src/submit/asst1$ git log
+commit 571050f2bf197cb4f5c5bb59d34893739a295455 (HEAD -> master, tag: asst1-start, origin/master, origin/HEAD)
+Author: Nayeon Kim <lkim0731@gmail.com>
+Date:   Thu Sep 4 00:00:25 2025 -0700
+
+    Initial commit
+    
+    
+lkim0@LAPTOP-G925UH30:~/home/OS161_BASE/os161-cpen331-docker/src/submit/asst1$ git tag
+asst1-start
+
+
+    
+Q1.
+We can find the first line of OS/161 code that is executed when a trap occurs in kern/arch/mips/locore/exception-mips1.S since its assembly code sets up a trapframe.
+A function, void mips_trap(struct trapframe *tf) in kern/arch/mips/locore/trap.c, gets control from that point. 
+For hardware interrupts, control will go to mips_interrupt().
+
+Q2.
+When user calls write(), it will call the syscall stub __syscall in userland/lib/libc/arch/mips/syscalls-mips.S:83. Then it will execute the mips syscall instruction to trigger a trap. (userland/lib/libc/arch/mips/syscalls-mips.S file's line 83.) 
+
+Q3. 
+lkim0@LAPTOP-G925UH30:~/home/OS161_BASE/os161-cpen331-docker/src$ ls common/libc
+arch  printf  stdlib  string
+lkim0@LAPTOP-G925UH30:~/home/OS161_BASE/os161-cpen331-docker/src$ ls userland/lib/libc
+Makefile  arch  stdio  stdlib  string  syscalls  time  unix
+
+common/libc contains basic C functions
+userland/lib/libc contains user-space functions
+
+The libc functions are split into two locations because:
+- common/libc contains generic C functions that do not depend on system calls. For example, string functions like strlen (common/libc/string/strlen.c) or memory functions like memcpy are useful in both the kernel and userland. The kernel cannot rely on user-space syscalls, so it needs its own copy of these utilities.
+- userland/lib/libc contains the user-level C library that interacts with the kernel. For example, write (userland/lib/libc/syscalls/write.c and syscalls-mips.S) or putchar (userland/lib/libc/stdio/putchar.c) eventually execute the syscall instruction to trap into the kernel. These functions are only relevant for user programs.
+This separation allows code reuse of generic helpers while keeping system-call related code isolated to userland.
+
+Q4. 
+The configure script configures:
+The top-level Makefile – so the OS/161 distribution and user-level programs can be built correctly.
+kern/arch/mips/conf/conf.arch – so the kernel build system knows where to find machine-specific low-level functions.
+This configuration might be invalidated if the cross-compiler or toolchain paths change, if the build environment is modified, or if the configuration files are deleted or updated. In such cases, we would need to rerun configure.
+
+Q5. 
+Hardware-specific instructions such as syscall makes a function machine dependent.It depends on CPU registers, traps, and exception handling that differ from other architectures.
+It is important to maintain separation of the code in functions because we can reuse the rest of the OS on another architecture by only rewriting the arch-specific bits. 
+
+Q6. 
+The trapframe is 148 bytes. In trapframe.h under kern/arch/mips/include/ folder: According to the strunct of trapframe, there are 37 uint32_t register fields. 
+uint32_t takes 4 bytes, so the total size is 37*4= 148.
+
+Q7.
+I should re-run kern/conf/config script when I change the kernel configuration file in kern/conf/ folder.
+
+Q8. 
+To ensuring that the build system is aware of the correct dependencies, we should you run bmake depend in kern/compile/DUMBVM when adding or removing header file included in the kernel source code. Also, when creating new source files or moving existing ones into the kernel build. Then we can run bmake. 
+
+Q9. 
+We should run bmake in kern/compile/DUMBVM when we modified the kernel source code. This compiles the kernel using the current build configuration.
+We should run bmake install after building a new kernel to copy the compiled kernel into the correct location. 
+So, when we modify the source code, then we should run bmake depend -> bmake-> bmake install. 
+
+Q10.
+To add a command that printed out, "Hello world!":
+
+// I modified kern/main/menu.c file by adding a function: 
+static
+int
+cmd_helloworldmenu(int n, char **a) {
+    (void)n;   
+    (void)a;
+
+    kprintf("Hello world!\n");
+    return 0;
+}
+
+// and a command word in Command table's menus section: 
+{ "helloworld", cmd_helloworldmenu },
+
+If there's already exsisting conflicting files, then remove it first and then run the configures:
+./configure
+cd kern/conf
+./config DUMBVM
+
+cd src/kern/compile/DUMBVM
+bmake depend
+bmake
+bmake install
+
+Then run the kernel, 
+sys161 kernel, 
+and then enter the command "helloworld"
+Then it prints "Hello world!"
+
+Q11.
+We need userland/include/ and userland/lib/ in the OS/161 distribution:
+- To ensure all students use the same headers and libraries.
+- To provide the MIPS-compatible versions since the OS/161 user programs are compiled with mips-harvard-os161-gcc.
+- To provide some limited standard C headers and libraries necessary for the course.
+
+Q12.
+The program's return value will be captured in the process structure by OS/161 when a user program exits. Then the exit code will be stored so that anothr process can retrieve it. For example. parent process can call waitpid() to retrieve the child process’s exit code. 
+
+
+Q13.
+I'll modify and add new files to add new system call(94, which is selected without any intention) by following under steps:
+
+Step1: Kernel-side.
+
+In src/kern/include/kern/syscall.h: 
+#define SYS_hello       94
+The script gensyscalls.sh only parses lines inside /*CALLBEGIN*/ … /*CALLEND*/.
+
+
+In src/kern/include/syscall.h:
+int sys_hello(void);
+
+
+In /src/kern/syscall, make hello_syscall.c file with this content: 
+#include <types.h>
+#include <lib.h>
+#include <syscall.h>
+
+int
+sys_hello(void) {
+    kprintf("Hello from kernel!\n");
+    return 0;
+}
+
+
+/src/kern/arch/mips/syscall/syscall.c
+Add new function to the syscall dispatch table (so the kernel knows which function to call when the syscall number is invoked).
+Inside syscall.c: 
+switch (callno) { ... }):
+case SYS_hello:
+    retval = sys_hello();
+    err = 0;
+    break;
+
+Step2: User-level
+
+make a file userland/include/syscall.h with this content:
+#ifndef _SYSCALL_H_
+#define _SYSCALL_H_
+
+#define SYS_hello 94  
+int syscall(int sysnum, ...);
+
+#endif /* _SYSCALL_H_ */
+
+
+
+In /src/userland/include/unistd.h
+Add this line:
+int hello(void);
+
+Step 3: User-level wrapper
+Make new file(hello.c) in /src/userland/lib/libc/unix folder with this content:
+#include <unistd.h>
+#include <syscall.h>
+#include <sys/types.h>
+#include <kern/syscall.h>
+
+
+/* userland wrapper for the hello() syscall */
+int hello(void) {
+    int result;
+
+    /* `syscall()` here is the MIPS assembly trap stub defined in libc. */
+    result = syscall(SYS_hello);
+
+    return result;
+}
+
+
+Modify /userland/lib/libc$ vim Makefile:
+# other stuff
+SRCS+=\
+        unix/__assert.c \
+        unix/err.c \
+        unix/errno.c \
+        unix/execvp.c \
+        unix/getcwd.c \
+        unix/hello.c\                       /* I added this lines */
+        $(COMMON)/arch/mips/setjmp.S
+
+
+Write a test program in userland/testbin/:
+Make folder and a file as this path: src/userland/testbin/hello/hello.c : 
+#include <unistd.h>
+#include <stdio.h>
+
+int main() {
+    int r = hello();
+    printf("hello() returned %d\n", r);
+    return 0;
+}	
+
+Add a Makefile src/userland/testbin/hello/Makefile:
+TOP=../../..
+.include "$(TOP)/mk/os161.config.mk"
+
+PROG=hello
+SRCS=hello.c
+BINDIR=/testbin
+
+.include "$(TOP)/mk/os161.prog.mk"
+
+
+Step 4: Rebuild the kernel
+From the docker's ~/os1161/src:
+bmake depend
+bmake
+bmake install
+
+
+I run this command to confirm the userland stub for hello now exists: ~/os161/src/userland/build# grep hello lib/libc/syscalls.S
+Here's the output that it works as I intended:
+SYSCALL(hello, 94) 
+
+
+In my case, there's no root/kernel, I copied it from under folder src/kern/compile/DUMBVM: 
+~/os161# cp src/kern/compile/DUMBVM/kernel root/kernel
+
+
+
+
+Step 5: Check the output
+
+Then I can run sys161 kernel under ~/os161/root, and entered p /testbin/hello for get the result of testbin's hello.c
+At the OS/161 prompt:
+p /testbin/hello
+
+output:
+ p /testbin/hello
+Operation took 0.000298520 seconds
+OS/161 kernel [? for menu]: Unknown syscall 94
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 55
+Unknown syscall 3
+Fatal user mode trap 4 sig 10 (Address error on load, epc 0x400234, vaddr 0xeeeee00f)
+panic: I don't know how to handle this
+sys161: 239721968 cycles (57426811 run, 182295157 global-idle)
+sys161:   cpu0: 12947408 kern, 2080 user, 0 idle; 15381 ll, 15381/0 sc, 62492 sync
+sys161: 2321 irqs 115 exns 0r/0w disk 17r/1185w console 9r/0w/3m emufs 0r/0w net
+sys161: Elapsed real time: 7.511268 seconds (31.915 mhz)
+sys161: Elapsed virtual time: 9.593168396 seconds (25 mhz)
+
+
+The hello() userland program is running, but the kernel doesn’t recognize the syscall number.
+
+Q14.
+The Very first function that executes when OS161 starts up: __start
+
+(gdb) break __start
+Breakpoint 1 at 0x8002d794: file ../../arch/sys161/main/start.S, line 55.
+(gdb) c
+Continuing.
+
+Breakpoint 1, __start () at ../../arch/sys161/main/start.S:55
+55         sw ra, 20(sp)
+
+
+Q15.
+(gdb) disassemble __start
+Dump of assembler code for function __start:
+   0x8002d790 <+0>:     addiu   sp,sp,-24
+=> 0x8002d794 <+4>:     sw      ra,20(sp)
+   0x8002d798 <+8>:     lui     s0,0x8003
+   0x8002d79c <+12>:    addiu   s0,s0,23824
+   0x8002d7a0 <+16>:    move    a1,a0
+   0x8002d7a4 <+20>:    move    a0,s0
+   0x8002d7a8 <+24>:    jal     0x80001d30 <strcpy>
+   0x8002d7ac <+28>:    nop
+   
+The very first assembly instruction that executes is addiu   sp,sp,-24.
+
+Q16.
+(gdb) break kmain
+Breakpoint 2 at 0x800139e4: file ../../main/main.c, line 211.
+(gdb) break menu
+Breakpoint 3 at 0x80014a50: file ../../main/menu.c, line 708.
+(gdb) info breakpoints
+Num     Type           Disp Enb Address    What
+1       breakpoint     keep y   0x8002d794 in __start at ../../arch/sys161/main/start.S:55
+        breakpoint already hit 1 time
+2       breakpoint     keep y   0x800139e4 in kmain at ../../main/main.c:211
+3       breakpoint     keep y   0x80014a50 in menu at ../../main/menu.c:708
+
+
+Q17.
+Between beginning of the execution and the invocation of the kernel main function, OS/161 executes assembly code that prepares the runtime environment for kmain() such as initializing stack and memory. 
+
+Q18.
+The assembly language instruction that calls the kernel main function is jal     0x800139d0 <kmain>.
+(gdb) disassemble __start,+200
+Dump of assembler code from 0x8002d790 to 0x8002d858:
+   0x8002d790 <__start+0>:      addiu   sp,sp,-24
+=> 0x8002d794 <__start+4>:      sw      ra,20(sp)
+   0x8002d798 <__start+8>:      lui     s0,0x8003
+   0x8002d79c <__start+12>:     addiu   s0,s0,23824
+   0x8002d7a0 <__start+16>:     move    a1,a0
+   
+   ...
+   
+   0x8002d854 <__start+196>:    jal     0x800139d0 <kmain>
+   
+   
+Q19.
+Breakpoint 1, boot () at ../../main/main.c:99
+99              kprintf("\n");
+(gdb) list
+94               * overflow it, the system will crash without printing
+95               * anything at all. You can make it larger though (it's in
+96               * dev/generic/console.c).
+97               */
+98
+99              kprintf("\n");
+100             kprintf("OS/161 base system version %s\n", BASE_VERSION);
+101             kprintf("%s", harvard_copyright);
+102             kprintf("\n");
+103
+(gdb)
+104             kprintf("Put-your-group-name-here's system version %s (%s #%d)\n",
+105                     GROUP_VERSION, buildconfig, buildversion);
+106             kprintf("\n");
+107
+108             /* Early initialization. */
+109             ram_bootstrap();
+110             proc_bootstrap();
+111             thread_bootstrap();
+112             hardclock_bootstrap();
+113             vfs_bootstrap();
+(gdb)
+114             kheap_nextgeneration();
+115
+116             /* Probe and initialize devices. Interrupts should come on. */
+117             kprintf("Device probe...\n");
+118             KASSERT(curthread->t_curspl > 0);
+119             mainbus_bootstrap();
+120             KASSERT(curthread->t_curspl == 0);
+121             /* Now do pseudo-devices. */
+122             pseudoconfig();
+123             kprintf("\n");
+(gdb)
+124             kheap_nextgeneration();
+125
+126             /* Late phase of initialization. */
+127             vm_bootstrap();
+128             kprintf_bootstrap();
+129             thread_start_cpus();
+130
+131             /* Default bootfs - but ignore failure, in case emu0 doesn't exist */
+132             vfs_setbootfs("emu0");
+133
+(gdb)
+134             kheap_nextgeneration();
+135
+136             /*
+137              * Make sure various things aren't screwed up.
+138              */
+139             COMPILE_ASSERT(sizeof(userptr_t) == sizeof(char *));
+140             COMPILE_ASSERT(sizeof(*(userptr_t)0) == sizeof(char));
+141     }
+142
+143     /*
+(gdb)
+144      * Shutdown sequence. Opposite to boot().
+145      */
+146     static
+147     void
+148     shutdown(void)
+149     {
+150
+151             kprintf("Shutting down.\n");
+152
+153             vfs_clearbootfs();
+
+There are these functions in boot():
+109     ram_bootstrap();
+110     proc_bootstrap();
+111     thread_bootstrap();
+112     hardclock_bootstrap();
+113     vfs_bootstrap();
+114     kheap_nextgeneration();
+117     mainbus_bootstrap();
+121     pseudoconfig();
+124     kheap_nextgeneration();
+127     vm_bootstrap();
+128     kprintf_bootstrap();
+129     thread_start_cpus();
+132     vfs_setbootfs("emu0");
+134     kheap_nextgeneration();
+
+Breakpoint 2, ram_bootstrap () at ../../arch/mips/vm/ram.c:51
+51              ramsize = mainbus_ramsize();
+(gdb) s
+mainbus_ramsize () at ../../arch/sys161/dev/lamebus_machdep.c:252
+252             ramsize = lamebus_ramsize();
+(gdb) s
+lamebus_ramsize () at ../../dev/lamebus/lamebus.c:608
+608             return read_ctl_register(NULL, CTLREG_RAMSZ);
+(gdb) s
+read_ctl_register (lb=0x0, offset=512) at ../../dev/lamebus/lamebus.c:97
+97              return read_cfg_register(lb, LB_CONTROLLER_SLOT, offset);
+(gdb) s
+read_cfg_register (lb=0x0, slot=31, offset=512) at ../../dev/lamebus/lamebus.c:71
+71              offset += LB_CONFIG_SIZE*slot;
+(gdb) s
+72              return lamebus_read_register(lb, LB_CONTROLLER_SLOT, offset);
+(gdb) s
+lamebus_read_register (bus=0x0, slot=31, offset=32256) at ../../arch/sys161/dev/lamebus_machdep.c:156
+156             ptr = lamebus_map_area(bus, slot, offset);
+(gdb) s
+lamebus_map_area (bus=0x0, slot=31, offset=32256) at ../../arch/sys161/dev/lamebus_machdep.c:142
+142             KASSERT(slot >= 0 && slot < LB_NSLOTS);
+(gdb) s
+144             address = LB_BASEADDR + slot*LB_SLOT_SIZE + offset;
+(gdb) s
+145             return (void *)address;
+(gdb) s
+146     }
+
+
+boot() → calls ram_bootstrap() → calls mainbus_ramsize() → lamebus_ramsize()
+→ calls read_ctl_register()
+→ calls read_cfg_register()
+→ calls lamebus_read_register()
+→ calls lamebus_map_area()
+
+Q20.
+(gdb) break thread_bootstrap
+Breakpoint 1 at 0x8001fad8: file ../../thread/thread.c, line 357.
+(gdb) c
+Continuing.
+
+Breakpoint 1, thread_bootstrap () at ../../thread/thread.c:357
+357             cpuarray_init(&allcpus);
+(gdb) list
+352     thread_bootstrap(void)
+353     {
+354             struct cpu *bootcpu;
+355             struct thread *bootthread;
+356
+357             cpuarray_init(&allcpus);
+358
+359             /*
+360              * Create the cpu structure for the bootup CPU, the one we're
+361              * currently running on. Assume the hardware number is 0; that
+(gdb) p *bootcpu
+Cannot access memory at address 0x80000
+
+Q21.
+Breakpoint 1, thread_bootstrap () at ../../thread/thread.c:357
+357             cpuarray_init(&allcpus);
+(gdb) p *bootcpu
+Cannot access memory at address 0x80000
+(gdb) n
+367             bootcpu = cpu_create(0);
+(gdb) p *bootcpu
+Cannot access memory at address 0x80000
+(gdb) n
+368             bootthread = bootcpu->c_curthread;
+(gdb) p *bootcpu
+$1 = {c_self = 0x8003af00, c_number = 0, c_hardware_number = 0, c_curthread = 0x8003bf80, c_zombies = {
+    tl_head = {tln_prev = 0x0, tln_next = 0x8003af1c, tln_self = 0x0}, tl_tail = {tln_prev = 0x8003af10,
+      tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_hardclocks = 0, c_spinlocks = 0, c_isidle = false,
+  c_runqueue = {tl_head = {tln_prev = 0x0, tln_next = 0x8003af44, tln_self = 0x0}, tl_tail = {
+      tln_prev = 0x8003af38, tln_next = 0x0, tln_self = 0x0}, tl_count = 0}, c_runqueue_lock = {
+    splk_lock = 0, splk_holder = 0x0}, c_ipi_pending = 0, c_shootdown = {{
+      ts_placeholder = 0} <repeats 16 times>}, c_numshootdown = 0, c_ipi_lock = {splk_lock = 0,
+    splk_holder = 0x0}}
+    
+Q22.
+(gdb) break __start
+Breakpoint 1 at 0x8002d794: file ../../arch/sys161/main/start.S, line 55.
+(gdb) c
+Continuing.
+
+Breakpoint 1, __start () at ../../arch/sys161/main/start.S:55
+55         sw ra, 20(sp)
+(gdb) break *0x8002d854
+Breakpoint 2 at 0x8002d854: file ../../arch/sys161/main/start.S, line 215.
+(gdb) c
+Continuing.
+
+Breakpoint 2, __start () at ../../arch/sys161/main/start.S:215
+215        jal kmain
+(gdb) cpuarray allcpus
+0 cpus
+
+Q23.
+(gdb) break boot
+Breakpoint 3 at 0x800136d0: file ../../main/main.c, line 99.
+(gdb) c
+Continuing.
+
+Breakpoint 3, boot () at ../../main/main.c:99
+99              kprintf("\n");
+(gdb) cpuarray allcpus
+0 cpus
+
+
+
