@@ -159,4 +159,7 @@ int execvp(const char *prog, char *const *args); /* calls execv */
 char *getcwd(char *buf, size_t buflen);		/* calls __getcwd */
 time_t time(time_t *seconds);			/* calls __time */
 
+/* Q13 */
+int hello(void);
+
 #endif /* _UNISTD_H_ */

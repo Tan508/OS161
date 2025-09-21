@@ -1,0 +1,52 @@
+Step 2.
+Q1.
+thread_exit() in kern/thread/thread.c:
+thread_exit() detaches thread from process. 
+When the kernel is safe to free it, the function sets the thread state to zombie state, S_ZOMBIE. It never returns to make the thread is gone.
+
+wchan_sleep() in kern/thread/thread.c: 
+Verifies it’s safe to sleep (not in interrupt, one spinlock held).
+Calls thread_switch(S_SLEEP) to make itself sleeping.
+When woken, the channel will make the thread runnable again. 
+
+Q2. 
+thread_switch() handls the thread context switch.
+
+Q3. 
+According to /kern/include/thread.h,
+Thread can have one of four states:
+	S_RUN(running on CPU), 
+	S_READY(ready to run when CPU becomes available),
+	S_SLEEP(sleeping for waking it to be S_READY),
+	S_ZOMBIE(zombie; exited but not yet deleted)
+
+Q4.
+Interrupts are signals from devices like keyboard, that cause the CPU to pause the current thread and run an interrupt handler. So, turning interrupts off means preventing the CPU from being interrupted, so that the current code runs atomically.
+As described in kern/thread/spl.c, this is accomplished by calling splhigh() to disable all interrupts and later restoring the previous state with splx(). 
+This is important in the thread subsystem because it ensures that critical operations, such as context switches and run queue manipulations, are executed atomically without being interrupted. Otherwise, an interrupt could cause race conditions, corruption of thread state, or deadlocks.
+
+Q5. 
+Based on my understanding of kern/thread/thread.c: 
+When a thread wakes up another thread, the woken thread is removed from the wait channel’s queue (via wchan_wakeone or wchan_wakeall) and passed to thread_make_runnable(). This changes its state from S_SLEEP to S_READY and places it on the CPU’s run queue. If the CPU was idle, an interrupt is sent to wake it up. The sleeping thread does not immediately resume; instead, the scheduler will later choose it from the run queue, perform a context switch, and the thread continues execution just after the point where it called wchan_sleep().
+
+Q6.
+The function that chooses the next thread to run is thread_switch(). Inside thread_switch, the scheduler removes a thread from the CPU’s run queue using threadlist_remhead(). If no runnable thread is available, cpu_idle() is invoked until one appears. Thus, thread_switch() is responsible for both enqueuing the current thread and selecting the next thread to run.
+
+Q7.
+It picks the next thread from the head of the run queue. Threads are added to the tail of the run queue when they become runnable, so scheduling is effectively first-in, first-out. If the run queue is empty, the CPU idles until a new thread is made runnable, at which point the next available thread is taken from the head of the queue and run.
+
+Q8. 
+By reading kern/thread/clock.c:
+The hardware timer generates periodic interrupts, allowing the OS to preempt running threads and enforce time slicing for fair scheduling. Each timer interrupt calls the hardware independent function hardclock(). This function updates CPU tick counters, occasionally invokes thread_consider_migration() and schedule(), and finally calls thread_yield(). This ensures that no thread can monopolize the CPU, enabling preemptive multitasking.
+
+Q9. 
+According to kern/thread/synch.c:
+
+wchan_sleep() and wchan_wakeone() are used inside the semaphore operations P() and V() to manage blocking and waking of threads.
+In P(), if the semaphore count is zero, the calling thread calls wchan_sleep() to block until another thread performs a V(). This prevents it from consuming the resource prematurely.
+In V(), after incrementing the semaphore count, the function calls wchan_wakeone() to wake a single waiting thread so it can acquire the semaphore and continue execution.
+Thus, wchan_sleep() provides the blocking mechanism for unavailable resources, and wchan_wakeone() provides the wakeup mechanism when resources are released.
+
+Q10. 
+The wchan implementation ensures that wakeups are never missed by requiring both sleeping and waking operations to hold the same spinlock. A thread is added to the wait channel’s queue while the lock is still held, and the lock is only released after this is done. Since wchan_wakeone() also requires the lock before removing a thread, it cannot race ahead and wake a thread before it is properly queued. This atomicity guarantees that no thread ever misses a wakeup signal.
+

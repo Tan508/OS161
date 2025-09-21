@@ -518,7 +518,7 @@ cmd_mainmenu(int n, char **a)
 
 	showmenu("OS/161 kernel menu", mainmenu);
 	return 0;
-}
+};
 
 ////////////////////////////////////////
 //

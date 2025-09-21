@@ -36,7 +36,6 @@
 #include <current.h>
 #include <syscall.h>
 
-
 /*
  * System call dispatcher.
  *
@@ -75,6 +74,8 @@
  * stack, starting at sp+16 to skip over the slots for the
  * registerized values, with copyin().
  */
+
+
 void
 syscall(struct trapframe *tf)
 {
@@ -110,6 +111,7 @@ syscall(struct trapframe *tf)
 		break;
 
 	    /* Add stuff here */
+          
 
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
@@ -159,3 +161,5 @@ enter_forked_process(struct trapframe *tf)
 {
 	(void)tf;
 }
+
+
