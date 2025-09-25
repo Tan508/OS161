@@ -76,9 +76,9 @@ struct lock {
         char *lk_name;
         // add what you need here
         // (don't forget to mark things volatile as needed)
-	struct wchan *lk_wchan;
-	struct spinlock lk_spinlock;
-	struct thread *lk_holder;
+	struct wchan *lk_wchan;		// wait channel for thread to wait at this lock
+	struct spinlock lk_spinlock;	// protect lock state and wait channel
+	struct thread *lk_holder;	// thread which is holding the lock now
 };
 
 struct lock *lock_create(const char *name);
@@ -118,8 +118,8 @@ struct cv {
         char *cv_name;
         // add what you need here
         // (don't forget to mark things volatile as needed)
-	struct wchan *cv_wchan;
-	struct spinlock cv_spinlock;
+	struct thread *waitqueue;
+	struct spinlock cv_spinlock;	// protect cv wait list
 };
 
 struct cv *cv_create(const char *name);
