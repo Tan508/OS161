@@ -50,3 +50,4 @@ Thus, wchan_sleep() provides the blocking mechanism for unavailable resources, a
 Q10. 
 The wchan implementation ensures that wakeups are never missed by requiring both sleeping and waking operations to hold the same spinlock. A thread is added to the wait channel’s queue while the lock is still held, and the lock is only released after this is done. Since wchan_wakeone() also requires the lock before removing a thread, it cannot race ahead and wake a thread before it is properly queued. This atomicity guarantees that no thread ever misses a wakeup signal.
 
+Step3.
