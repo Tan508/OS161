@@ -138,18 +138,25 @@ V(struct semaphore *sem)
 //
 // Lock.
 
+<<<<<<< HEAD
 
 // Simple mutual exclusion lock using a wait channel.
 // - Only one thread can hold the lock at a time (tracked by lk_holder)
 // - Threads that can't acquire the lock sleep on a wait channel
 // - When lock is released, one waiting thread is woken up
 // - Uses spinlock to protect internal state from race conditions
+=======
+>>>>>>> instructor/synchprobs
 struct lock *
 lock_create(const char *name)
 {
         struct lock *lock;
 
+<<<<<<< HEAD
 	lock = kmalloc(sizeof(struct lock));
+=======
+        lock = kmalloc(sizeof(struct lock));
+>>>>>>> instructor/synchprobs
         if (lock == NULL) {
                 return NULL;
         }
@@ -161,6 +168,7 @@ lock_create(const char *name)
         }
 
         // add stuff here as needed
+<<<<<<< HEAD
 	// create wait channel for threads blocked on this lock	
 	lock->lk_wchan = wchan_create(lock->lk_name);
         if (lock->lk_wchan == NULL) {
@@ -175,6 +183,9 @@ lock_create(const char *name)
 	// There's no thread holding lock at the initial point. 
 	lock->lk_holder = NULL;
         
+=======
+
+>>>>>>> instructor/synchprobs
         return lock;
 }
 
@@ -184,6 +195,7 @@ lock_destroy(struct lock *lock)
         KASSERT(lock != NULL);
 
         // add stuff here as needed
+<<<<<<< HEAD
 	
 	KASSERT(lock->lk_holder == NULL);
 
@@ -192,6 +204,9 @@ lock_destroy(struct lock *lock)
         
 	// wchan_destroy will assert if threads are waiting
 	wchan_destroy(lock->lk_wchan);
+=======
+
+>>>>>>> instructor/synchprobs
         kfree(lock->lk_name);
         kfree(lock);
 }
@@ -200,6 +215,7 @@ void
 lock_acquire(struct lock *lock)
 {
         // Write this
+<<<<<<< HEAD
 	
 	KASSERT(lock != NULL);
 
@@ -217,12 +233,17 @@ lock_acquire(struct lock *lock)
         
         spinlock_release(&lock->lk_spinlock);
 
+=======
+
+        (void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 void
 lock_release(struct lock *lock)
 {
         // Write this
+<<<<<<< HEAD
 	
 	KASSERT(lock != NULL);
         
@@ -236,12 +257,17 @@ lock_release(struct lock *lock)
         wchan_wakeone(lock->lk_wchan, &lock->lk_spinlock);
         spinlock_release(&lock->lk_spinlock);
 
+=======
+
+        (void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
         // Write this
+<<<<<<< HEAD
 	
 	KASSERT(lock != NULL);
         
@@ -255,6 +281,12 @@ lock_do_i_hold(struct lock *lock)
         return result;
 
        
+=======
+
+        (void)lock;  // suppress warning until code gets written
+
+        return true; // dummy until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 ////////////////////////////////////////////////////////////
@@ -266,11 +298,16 @@ struct cv *
 cv_create(const char *name)
 {
         struct cv *cv;
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> instructor/synchprobs
         cv = kmalloc(sizeof(struct cv));
         if (cv == NULL) {
                 return NULL;
         }
+<<<<<<< HEAD
         
         cv->cv_name = kstrdup(name);
         if (cv->cv_name == NULL) {
@@ -288,6 +325,17 @@ cv_create(const char *name)
         
         // initalize spinlock to protect cv 
         spinlock_init(&cv->cv_spinlock);
+=======
+
+        cv->cv_name = kstrdup(name);
+        if (cv->cv_name==NULL) {
+                kfree(cv);
+                return NULL;
+        }
+
+        // add stuff here as needed
+
+>>>>>>> instructor/synchprobs
         return cv;
 }
 
@@ -295,20 +343,30 @@ void
 cv_destroy(struct cv *cv)
 {
         KASSERT(cv != NULL);
+<<<<<<< HEAD
         // add stuff here as needed
 	
 	// clean up resources
         spinlock_cleanup(&cv->cv_spinlock);
         wchan_destroy(cv->cv_wchan);
+=======
+
+        // add stuff here as needed
+
+>>>>>>> instructor/synchprobs
         kfree(cv->cv_name);
         kfree(cv);
 }
 
+<<<<<<< HEAD
 // Atomically release lock and sleep, then acquire lock again
+=======
+>>>>>>> instructor/synchprobs
 void
 cv_wait(struct cv *cv, struct lock *lock)
 {
         // Write this
+<<<<<<< HEAD
 	
 	KASSERT(cv != NULL);
         KASSERT(lock != NULL);
@@ -331,12 +389,17 @@ cv_wait(struct cv *cv, struct lock *lock)
 	lock_acquire(lock);
 	
         
+=======
+        (void)cv;    // suppress warning until code gets written
+        (void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
         // Write this
+<<<<<<< HEAD
 
 	KASSERT(cv != NULL);
         KASSERT(lock != NULL);
@@ -351,12 +414,17 @@ cv_signal(struct cv *cv, struct lock *lock)
 
 
 
+=======
+	(void)cv;    // suppress warning until code gets written
+	(void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
 
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
 	// Write this
+<<<<<<< HEAD
 
 	KASSERT(cv != NULL);
         KASSERT(lock != NULL);
@@ -370,4 +438,8 @@ cv_broadcast(struct cv *cv, struct lock *lock)
         spinlock_release(&cv->cv_spinlock);
 
 	
+=======
+	(void)cv;    // suppress warning until code gets written
+	(void)lock;  // suppress warning until code gets written
+>>>>>>> instructor/synchprobs
 }
