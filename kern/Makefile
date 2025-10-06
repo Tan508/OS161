@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-
-=======
-#
->>>>>>> instructor/synchprobs
 # Toplevel makefile for the OS/161 kernel tree.
 #
 # Note: actual kernels are not compiled here; they are compiled in

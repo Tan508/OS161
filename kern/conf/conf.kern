@@ -424,8 +424,8 @@ defoption netfs
 
 ########################################
 #                                      #
-<<<<<<< HEAD
-=======
+#<<<<<<< HEAD
+#=======
 #  Synchronization problems assignment #
 #                                      #
 ########################################
@@ -436,7 +436,7 @@ optfile   synchprobs  synchprobs/airballoon.c
 
 ########################################
 #                                      #
->>>>>>> instructor/synchprobs
+#>>>>>>> instructor/synchprobs
 #              Test code               #
 #                                      #
 ########################################

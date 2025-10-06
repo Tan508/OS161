@@ -6,6 +6,9 @@
 #include <thread.h>
 #include <test.h>
 
+#include <synch.h>
+
+
 #define N_LORD_FLOWERKILLER 8
 #define NROPES 16
 static int ropes_left = NROPES;
@@ -13,10 +16,34 @@ static int ropes_left = NROPES;
 /* Data structures for rope mappings */
 
 /* Implement this! */
+struct rope {
+    	bool severed;          
+    	int rope_index;         
+};
+struct stake {
+	
+    	struct rope *rope;     
+    	struct lock *lock;      
+};
+struct hook {
+    	struct rope *rope;      
+    	struct lock *lock;      
+};
+static struct stake stakes[NROPES];
+static struct hook hooks[NROPES];
+static struct rope ropes[NROPES];
+
 
 /* Synchronization primitives */
 
 /* Implement this! */
+static struct lock *ropes_left_lock;       
+static struct cv *balloon_cv;              
+static struct lock *balloon_lock;          
+static struct semaphore *threads_done_sem; 
+static struct lock *print_lock;   
+
+
 
 /*
  * Describe your design and any invariants or locking protocols
@@ -34,6 +61,52 @@ dandelion(void *p, unsigned long arg)
 	kprintf("Dandelion thread starting\n");
 
 	/* Implement this function */
+	
+	while (1) {
+        
+        lock_acquire(ropes_left_lock);
+        if (ropes_left == 0) {
+            lock_release(ropes_left_lock);
+            break;
+        }
+        lock_release(ropes_left_lock);
+        
+        
+        int hook_index = random() % NROPES;
+        
+        
+        lock_acquire(hooks[hook_index].lock);
+        
+        if (hooks[hook_index].rope != NULL && !hooks[hook_index].rope->severed) {
+            
+            hooks[hook_index].rope->severed = true;
+            int rope_num = hooks[hook_index].rope->rope_index;
+            
+            
+            lock_acquire(ropes_left_lock);
+            ropes_left--;
+            if (ropes_left == 0) {
+                
+                lock_acquire(balloon_lock);
+                cv_signal(balloon_cv, balloon_lock);
+                lock_release(balloon_lock);
+            }
+            lock_release(ropes_left_lock);
+            
+            
+            lock_acquire(print_lock);
+            kprintf("Dandelion severed rope %d\n", rope_num);
+            lock_release(print_lock);
+            
+            lock_release(hooks[hook_index].lock);
+            thread_yield();
+        } else {
+            lock_release(hooks[hook_index].lock);
+        }
+    }
+    
+    kprintf("Dandelion thread done\n");
+    V(threads_done_sem);	
 }
 
 static
@@ -46,6 +119,55 @@ marigold(void *p, unsigned long arg)
 	kprintf("Marigold thread starting\n");
 
 	/* Implement this function */
+	
+	
+	while (1) {
+        
+        lock_acquire(ropes_left_lock);
+        if (ropes_left == 0) {
+            lock_release(ropes_left_lock);
+            break;
+        }
+        lock_release(ropes_left_lock);
+
+        
+        int stake_index = random() % NROPES;
+
+        
+        lock_acquire(stakes[stake_index].lock);
+
+        if (stakes[stake_index].rope != NULL && !stakes[stake_index].rope->severed) {
+            
+            stakes[stake_index].rope->severed = true;
+            int rope_num = stakes[stake_index].rope->rope_index;
+
+            
+            lock_acquire(ropes_left_lock);
+            ropes_left--;
+            if (ropes_left == 0) {
+                
+                lock_acquire(balloon_lock);
+                cv_signal(balloon_cv, balloon_lock);
+                lock_release(balloon_lock);
+            }
+            lock_release(ropes_left_lock);
+
+            
+            lock_acquire(print_lock);
+            kprintf("Marigold severed rope %d from stake %d\n", rope_num, stake_index);
+            lock_release(print_lock);
+
+            lock_release(stakes[stake_index].lock);
+            thread_yield();
+        } else {
+            lock_release(stakes[stake_index].lock);
+        }
+    }
+
+    kprintf("Marigold thread done\n");
+    V(threads_done_sem);
+
+	
 }
 
 static
@@ -58,6 +180,62 @@ flowerkiller(void *p, unsigned long arg)
 	kprintf("Lord FlowerKiller thread starting\n");
 
 	/* Implement this function */
+	
+	
+	while (1) {
+        
+        	lock_acquire(ropes_left_lock);
+        	if (ropes_left == 0) {
+            		lock_release(ropes_left_lock);
+            		break;
+        }
+        lock_release(ropes_left_lock);
+
+        
+        int stake1 = random() % NROPES;
+        int stake2 = random() % NROPES;
+
+        
+        if (stake1 == stake2) {
+            continue;
+        }
+
+        
+        int first = stake1 < stake2 ? stake1 : stake2;
+        int second = stake1 < stake2 ? stake2 : stake1;
+
+        lock_acquire(stakes[first].lock);
+        lock_acquire(stakes[second].lock);
+
+        
+        if (stakes[first].rope != NULL && !stakes[first].rope->severed &&
+            stakes[second].rope != NULL && !stakes[second].rope->severed) {
+
+            
+            struct rope *temp = stakes[first].rope;
+            stakes[first].rope = stakes[second].rope;
+            stakes[second].rope = temp;
+
+            
+            lock_acquire(print_lock);
+            kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n",
+                    stakes[second].rope->rope_index, first, second);
+            kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n",
+                    stakes[first].rope->rope_index, second, first);
+            lock_release(print_lock);
+
+            lock_release(stakes[second].lock);
+            lock_release(stakes[first].lock);
+            thread_yield();
+        } else {
+            lock_release(stakes[second].lock);
+            lock_release(stakes[first].lock);
+        }
+    }
+
+    kprintf("Lord FlowerKiller thread done\n");
+    V(threads_done_sem);
+	
 }
 
 static
@@ -70,6 +248,26 @@ balloon(void *p, unsigned long arg)
 	kprintf("Balloon thread starting\n");
 
 	/* Implement this function */
+	
+	
+	lock_acquire(balloon_lock);
+    	lock_acquire(ropes_left_lock);
+    	while (ropes_left > 0) {
+        	lock_release(ropes_left_lock);
+        	cv_wait(balloon_cv, balloon_lock);
+        	lock_acquire(ropes_left_lock);
+    	}
+    	lock_release(ropes_left_lock);
+    	lock_release(balloon_lock);
+
+    
+    	lock_acquire(print_lock);
+    	kprintf("Balloon freed and Prince Dandelion escapes!\n");
+    	lock_release(print_lock);
+
+    	kprintf("Balloon thread done\n");
+    	V(threads_done_sem);
+
 }
 
 
@@ -79,38 +277,91 @@ airballoon(int nargs, char **args)
 {
 
 	int err = 0, i;
+    	(void)nargs;
+    	(void)args;
 
-	(void)nargs;
-	(void)args;
-	(void)ropes_left;
 
-	err = thread_fork("Marigold Thread",
-			  NULL, marigold, NULL, 0);
-	if(err)
-		goto panic;
 
-	err = thread_fork("Dandelion Thread",
-			  NULL, dandelion, NULL, 0);
-	if(err)
-		goto panic;
+    	for (i = 0; i < NROPES; i++) {
+        	ropes[i].severed = false;
+        	ropes[i].rope_index = i;
 
-	for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
-		err = thread_fork("Lord FlowerKiller Thread",
-				  NULL, flowerkiller, NULL, 0);
-		if(err)
-			goto panic;
-	}
+        	stakes[i].rope = &ropes[i];
+        	stakes[i].lock = lock_create("stake");
+        	if (stakes[i].lock == NULL) {
+            		panic("airballoon: failed to create stake lock\n");
+        	}
 
-	err = thread_fork("Air Balloon",
-			  NULL, balloon, NULL, 0);
-	if(err)
-		goto panic;
+        	hooks[i].rope = &ropes[i];
+        	hooks[i].lock = lock_create("hook");
+        	if (hooks[i].lock == NULL) {
+            		panic("airballoon: failed to create hook lock\n");
+        	}
+    	}
 
-	goto done;
+    
+    	ropes_left = NROPES;
+    	ropes_left_lock = lock_create("ropes_left");
+    	balloon_cv = cv_create("balloon");
+    	balloon_lock = lock_create("balloon");
+    	print_lock = lock_create("print");
+
+    
+    
+    	threads_done_sem = sem_create("threads_done", 0);
+
+    	if (ropes_left_lock == NULL || balloon_cv == NULL ||
+        	balloon_lock == NULL || print_lock == NULL || threads_done_sem == NULL) {
+        	panic("airballoon: failed to create synchronization primitives\n");
+    	}
+
+    
+    	err = thread_fork("Marigold Thread",
+                      NULL, marigold, NULL, 0);
+    	if(err)
+        	goto panic;
+
+    	err = thread_fork("Dandelion Thread",
+                      NULL, dandelion, NULL, 0);
+    	if(err)
+        	goto panic;
+
+    	for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
+        	err = thread_fork("Lord FlowerKiller Thread",
+                          NULL, flowerkiller, NULL, 0);
+        	if(err)
+            		goto panic;
+    	}
+
+    	err = thread_fork("Air Balloon",
+                      NULL, balloon, NULL, 0);
+    	if(err)
+        	goto panic;
+
+    
+    	for (i = 0; i < 11; i++) {  // 11 total threads
+        	P(threads_done_sem);
+    	}
+
+    	// Clean up
+    	for (i = 0; i < NROPES; i++) {
+        	lock_destroy(stakes[i].lock);
+        	lock_destroy(hooks[i].lock);
+    	}
+    	lock_destroy(ropes_left_lock);
+    	lock_destroy(balloon_lock);
+    	lock_destroy(print_lock);
+    	cv_destroy(balloon_cv);
+    	sem_destroy(threads_done_sem);
+
+    	kprintf("Main thread done\n");
+    	goto done;
+
 panic:
-	panic("airballoon: thread_fork failed: %s)\n",
-	      strerror(err));
+    	panic("airballoon: thread_fork failed: %s)\n", strerror(err));
 
 done:
-	return 0;
+    	return 0;
+    
+ 
 }

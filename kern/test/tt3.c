@@ -37,11 +37,11 @@
 #include <synch.h>
 #include <test.h>
 
-<<<<<<< HEAD
+//<<<<<<< HEAD
 /* dimension of matrices (cannot be too large or will overflow stack) */
 
-#define DIM 70
-=======
+//#define DIM 70
+//=======
 #include "opt-synchprobs.h"
 
 /* dimension of matrices (cannot be too large or will overflow stack) */
@@ -51,7 +51,7 @@
 #else
 #define DIM 70
 #endif
->>>>>>> instructor/synchprobs
+//>>>>>>> instructor/synchprobs
 
 /* number of iterations for sleepalot threads */
 #define SLEEPALOT_PRINTS      20	/* number of printouts */

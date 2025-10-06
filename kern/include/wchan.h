@@ -30,10 +30,7 @@
 #ifndef _WCHAN_H_
 #define _WCHAN_H_
 
-<<<<<<< HEAD
 
-=======
->>>>>>> instructor/synchprobs
 /*
  * Wait channel.
  */

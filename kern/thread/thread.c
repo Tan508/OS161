@@ -51,11 +51,10 @@
 #include <mainbus.h>
 #include <vnode.h>
 
-<<<<<<< HEAD
-=======
+
 #include "opt-synchprobs.h"
 
->>>>>>> instructor/synchprobs
+
 
 /* Magic number used as a guard value on kernel thread stacks. */
 #define THREAD_STACK_MAGIC 0xbaadf00d
@@ -762,8 +761,8 @@ thread_startup(void (*entrypoint)(void *data1, unsigned long data2),
 	/* Enable interrupts. */
 	spl0();
 
-<<<<<<< HEAD
-=======
+//<<<<<<< HEAD
+//=======
 #if OPT_SYNCHPROBS
 	/* Yield a random number of times to get a good mix of threads. */
 	{
@@ -775,7 +774,7 @@ thread_startup(void (*entrypoint)(void *data1, unsigned long data2),
 	}
 #endif
 
->>>>>>> instructor/synchprobs
+//>>>>>>> instructor/synchprobs
 	/* Call the function. */
 	entrypoint(data1, data2);
 

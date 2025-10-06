@@ -76,12 +76,11 @@ struct lock {
         char *lk_name;
         // add what you need here
         // (don't forget to mark things volatile as needed)
-<<<<<<< HEAD
+
 	struct wchan *lk_wchan;			// wait channel for blocked threads
 	struct spinlock lk_spinlock;		// spinlock to protect lock state
 	volatile struct thread *lk_holder;	// thread which is holding the lock now
-=======
->>>>>>> instructor/synchprobs
+
 };
 
 struct lock *lock_create(const char *name);
@@ -121,11 +120,10 @@ struct cv {
         char *cv_name;
         // add what you need here
         // (don't forget to mark things volatile as needed)
-<<<<<<< HEAD
+
 	struct wchan *cv_wchan;		// wait channel for blocked threads
 	struct spinlock cv_spinlock;	// spinlock to protect cv state
-=======
->>>>>>> instructor/synchprobs
+
 };
 
 struct cv *cv_create(const char *name);
