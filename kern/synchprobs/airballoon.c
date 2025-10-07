@@ -51,6 +51,16 @@ static struct lock *print_lock;
  * do all threads know when they are done?
  */
 
+/* dandelion and marigold has similar logic. Only difference is that dandelion handles hooks, while marigold handles stakes. 
+ * Logics are this:
+ * 	- check remainder of ropes. If there's no more, then exit.
+ * 	- pick a random hook or stake. 
+ * 	- acquire lock for the hook or stake.
+ *	- check the rope is exist and not severed from the hook and stake. If it is, then changed its status as severed and decrement counter. 
+ *	- print message.
+ *
+ * Print function needs locks since it requires atoicity, since without lock, the output can be interleaved.
+ */
 static
 void
 dandelion(void *p, unsigned long arg)
@@ -62,51 +72,45 @@ dandelion(void *p, unsigned long arg)
 
 	/* Implement this function */
 	
-	while (1) {
+	int remaining;
+    	do {
+        	lock_acquire(ropes_left_lock);
+        	remaining = ropes_left;
+        	lock_release(ropes_left_lock);
         
-        lock_acquire(ropes_left_lock);
-        if (ropes_left == 0) {
-            lock_release(ropes_left_lock);
-            break;
-        }
-        lock_release(ropes_left_lock);
-        
-        
-        int hook_index = random() % NROPES;
-        
-        
-        lock_acquire(hooks[hook_index].lock);
-        
-        if (hooks[hook_index].rope != NULL && !hooks[hook_index].rope->severed) {
+        	if (remaining > 0) {
+            		int hook_index = random() % NROPES;
             
-            hooks[hook_index].rope->severed = true;
-            int rope_num = hooks[hook_index].rope->rope_index;
+            		lock_acquire(hooks[hook_index].lock);
             
-            
-            lock_acquire(ropes_left_lock);
-            ropes_left--;
-            if (ropes_left == 0) {
+            		if (hooks[hook_index].rope != NULL && !hooks[hook_index].rope->severed) {
+                		hooks[hook_index].rope->severed = true;
+                		int rope_num = hooks[hook_index].rope->rope_index;
                 
-                lock_acquire(balloon_lock);
-                cv_signal(balloon_cv, balloon_lock);
-                lock_release(balloon_lock);
-            }
-            lock_release(ropes_left_lock);
-            
-            
-            lock_acquire(print_lock);
-            kprintf("Dandelion severed rope %d\n", rope_num);
-            lock_release(print_lock);
-            
-            lock_release(hooks[hook_index].lock);
-            thread_yield();
-        } else {
-            lock_release(hooks[hook_index].lock);
-        }
-    }
-    
-    kprintf("Dandelion thread done\n");
-    V(threads_done_sem);	
+                		lock_acquire(ropes_left_lock);
+                		ropes_left--;
+                		if (ropes_left == 0) {
+                    			lock_acquire(balloon_lock);
+                    			cv_signal(balloon_cv, balloon_lock);
+                    			lock_release(balloon_lock);
+                		}
+                		lock_release(ropes_left_lock);
+                
+                		lock_acquire(print_lock);
+                		kprintf("Dandelion severed rope %d\n", rope_num);
+                		lock_release(print_lock);
+                
+                		lock_release(hooks[hook_index].lock);
+                		thread_yield();
+            		} else {
+                		lock_release(hooks[hook_index].lock);
+            		}
+        	}
+    	} while (remaining > 0);
+    	
+    	kprintf("Dandelion thread done\n");
+    	V(threads_done_sem);	
+         	
 }
 
 static
@@ -119,57 +123,59 @@ marigold(void *p, unsigned long arg)
 	kprintf("Marigold thread starting\n");
 
 	/* Implement this function */
-	
-	
-	while (1) {
-        
-        lock_acquire(ropes_left_lock);
-        if (ropes_left == 0) {
-            lock_release(ropes_left_lock);
-            break;
-        }
-        lock_release(ropes_left_lock);
 
-        
-        int stake_index = random() % NROPES;
 
-        
-        lock_acquire(stakes[stake_index].lock);
+	int remaining;
+    	do {
+        	lock_acquire(ropes_left_lock);
+        	remaining = ropes_left;
+        	lock_release(ropes_left_lock);
 
-        if (stakes[stake_index].rope != NULL && !stakes[stake_index].rope->severed) {
-            
-            stakes[stake_index].rope->severed = true;
-            int rope_num = stakes[stake_index].rope->rope_index;
+        	if (remaining > 0) {
+            		int stake_index = random() % NROPES;
 
-            
-            lock_acquire(ropes_left_lock);
-            ropes_left--;
-            if (ropes_left == 0) {
-                
-                lock_acquire(balloon_lock);
-                cv_signal(balloon_cv, balloon_lock);
-                lock_release(balloon_lock);
-            }
-            lock_release(ropes_left_lock);
+            		lock_acquire(stakes[stake_index].lock);
 
-            
-            lock_acquire(print_lock);
-            kprintf("Marigold severed rope %d from stake %d\n", rope_num, stake_index);
-            lock_release(print_lock);
+            		if (stakes[stake_index].rope != NULL && !stakes[stake_index].rope->severed) {
+                		stakes[stake_index].rope->severed = true;
+                		int rope_num = stakes[stake_index].rope->rope_index;
 
-            lock_release(stakes[stake_index].lock);
-            thread_yield();
-        } else {
-            lock_release(stakes[stake_index].lock);
-        }
-    }
+                		lock_acquire(ropes_left_lock);
+                		ropes_left--;
+                		if (ropes_left == 0) {
+                    			lock_acquire(balloon_lock);
+                    			cv_signal(balloon_cv, balloon_lock);
+                    			lock_release(balloon_lock);
+                		}
+                		lock_release(ropes_left_lock);
 
-    kprintf("Marigold thread done\n");
-    V(threads_done_sem);
+                		lock_acquire(print_lock);
+                		kprintf("Marigold severed rope %d from stake %d\n", rope_num, stake_index);
+                		lock_release(print_lock);
 
+                		lock_release(stakes[stake_index].lock);
+                		thread_yield();
+            		} else {
+                		lock_release(stakes[stake_index].lock);
+            		}
+        	}
+    	} while (remaining > 0);
+
+    	kprintf("Marigold thread done\n");
+    	V(threads_done_sem);
 	
 }
 
+
+/* Logic for flowerKiller: 
+ * 	- check if rope for working remains. If not, exit the code. 
+ * 	- select two random stakes
+ * 	- acquire locks in order for the two stakes.
+ * 	- check both ropes are valid and not severed.
+ * 	- swap rope pointers.
+ * 	- print message.
+ *
+ */
 static
 void
 flowerkiller(void *p, unsigned long arg)
@@ -182,62 +188,55 @@ flowerkiller(void *p, unsigned long arg)
 	/* Implement this function */
 	
 	
-	while (1) {
-        
+	int remaining;
+    	do {
         	lock_acquire(ropes_left_lock);
-        	if (ropes_left == 0) {
-            		lock_release(ropes_left_lock);
-            		break;
-        }
-        lock_release(ropes_left_lock);
-
+        	remaining = ropes_left;
+        	lock_release(ropes_left_lock);
         
-        int stake1 = random() % NROPES;
-        int stake2 = random() % NROPES;
-
-        
-        if (stake1 == stake2) {
-            continue;
-        }
-
-        
-        int first = stake1 < stake2 ? stake1 : stake2;
-        int second = stake1 < stake2 ? stake2 : stake1;
-
-        lock_acquire(stakes[first].lock);
-        lock_acquire(stakes[second].lock);
-
-        
-        if (stakes[first].rope != NULL && !stakes[first].rope->severed &&
-            stakes[second].rope != NULL && !stakes[second].rope->severed) {
-
+        	if (remaining > 0) {
+            		int stake1 = random() % NROPES;
+            		int stake2 = random() % NROPES;
             
-            struct rope *temp = stakes[first].rope;
-            stakes[first].rope = stakes[second].rope;
-            stakes[second].rope = temp;
-
-            
-            lock_acquire(print_lock);
-            kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n",
-                    stakes[second].rope->rope_index, first, second);
-            kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n",
-                    stakes[first].rope->rope_index, second, first);
-            lock_release(print_lock);
-
-            lock_release(stakes[second].lock);
-            lock_release(stakes[first].lock);
-            thread_yield();
-        } else {
-            lock_release(stakes[second].lock);
-            lock_release(stakes[first].lock);
-        }
-    }
-
-    kprintf("Lord FlowerKiller thread done\n");
-    V(threads_done_sem);
+            		if (stake1 != stake2) { 
+                		int first = stake1 < stake2 ? stake1 : stake2;
+                		int second = stake1 < stake2 ? stake2 : stake1;
+                
+                		lock_acquire(stakes[first].lock);
+                		lock_acquire(stakes[second].lock);
+                
+                		if (stakes[first].rope != NULL && !stakes[first].rope->severed && stakes[second].rope != NULL && !stakes[second].rope->severed) {
+                    
+                    			struct rope *temp = stakes[first].rope;
+                    			stakes[first].rope = stakes[second].rope;
+                    			stakes[second].rope = temp;
+                    
+                    			lock_acquire(print_lock);
+                    			kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[second].rope->rope_index, first, second);
+                    			kprintf("Lord FlowerKiller switched rope %d from stake %d to stake %d\n", stakes[first].rope->rope_index, second, first);
+                    			lock_release(print_lock);
+                    
+                    			lock_release(stakes[second].lock);
+                    			lock_release(stakes[first].lock);
+                    			thread_yield();
+                		} else {
+                    			lock_release(stakes[second].lock);
+                    			lock_release(stakes[first].lock);
+                		}
+            		}
+        	}
+    	} while (remaining > 0);
+    
+    	kprintf("Lord FlowerKiller thread done\n");
+    	V(threads_done_sem);
 	
 }
 
+
+/* Logic for balloon:
+ * 	- wait on conditional variable while rope works remain.
+ * 	- if words are done and number of rope is 0, print message and exit. 
+ */
 static
 void
 balloon(void *p, unsigned long arg)
@@ -250,8 +249,11 @@ balloon(void *p, unsigned long arg)
 	/* Implement this function */
 	
 	
+	// balloon_lock is for cv_wait	
 	lock_acquire(balloon_lock);
-    	lock_acquire(ropes_left_lock);
+    	
+	// rope_left_lock is required in here to get exact ropes_left
+	lock_acquire(ropes_left_lock);
     	while (ropes_left > 0) {
         	lock_release(ropes_left_lock);
         	cv_wait(balloon_cv, balloon_lock);
@@ -281,7 +283,7 @@ airballoon(int nargs, char **args)
     	(void)args;
 
 
-
+	// initialize ropes, stakes, and hooks
     	for (i = 0; i < NROPES; i++) {
         	ropes[i].severed = false;
         	ropes[i].rope_index = i;
@@ -300,50 +302,45 @@ airballoon(int nargs, char **args)
     	}
 
     
+	// initialize Synchronization primitives
     	ropes_left = NROPES;
     	ropes_left_lock = lock_create("ropes_left");
     	balloon_cv = cv_create("balloon");
     	balloon_lock = lock_create("balloon");
     	print_lock = lock_create("print");
-
-    
-    
     	threads_done_sem = sem_create("threads_done", 0);
 
-    	if (ropes_left_lock == NULL || balloon_cv == NULL ||
-        	balloon_lock == NULL || print_lock == NULL || threads_done_sem == NULL) {
+
+    	if (ropes_left_lock == NULL || balloon_cv == NULL || balloon_lock == NULL || print_lock == NULL || threads_done_sem == NULL) {
         	panic("airballoon: failed to create synchronization primitives\n");
     	}
 
-    
-    	err = thread_fork("Marigold Thread",
-                      NULL, marigold, NULL, 0);
+    	// create threads
+    	err = thread_fork("Marigold Thread", NULL, marigold, NULL, 0);
     	if(err)
         	goto panic;
 
-    	err = thread_fork("Dandelion Thread",
-                      NULL, dandelion, NULL, 0);
+    	err = thread_fork("Dandelion Thread", NULL, dandelion, NULL, 0);
     	if(err)
         	goto panic;
+	
 
     	for (i = 0; i < N_LORD_FLOWERKILLER; i++) {
-        	err = thread_fork("Lord FlowerKiller Thread",
-                          NULL, flowerkiller, NULL, 0);
+        	err = thread_fork("Lord FlowerKiller Thread", NULL, flowerkiller, NULL, 0);
         	if(err)
             		goto panic;
     	}
 
-    	err = thread_fork("Air Balloon",
-                      NULL, balloon, NULL, 0);
+    	err = thread_fork("Air Balloon", NULL, balloon, NULL, 0);
     	if(err)
         	goto panic;
 
-    
-    	for (i = 0; i < 11; i++) {  // 11 total threads
+    	// main thread will be continued after processing 11 threads.  
+    	for (i = 0; i < 11; i++) {  // Number of total threads are 11. Dandelion(1) + merigold(1) + flowerkiller(8) + balloon(1) 
         	P(threads_done_sem);
     	}
 
-    	// Clean up
+    	// cleanup
     	for (i = 0; i < NROPES; i++) {
         	lock_destroy(stakes[i].lock);
         	lock_destroy(hooks[i].lock);
@@ -354,6 +351,7 @@ airballoon(int nargs, char **args)
     	cv_destroy(balloon_cv);
     	sem_destroy(threads_done_sem);
 
+	// main thread exit
     	kprintf("Main thread done\n");
     	goto done;
 
