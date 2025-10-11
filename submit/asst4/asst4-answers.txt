@@ -1,0 +1,257 @@
+Step 2. Complete the code reading exercises.
+
+1. What are the ELF magic numbers?
+kern/syscall/loadelf.c
+load_elf function: 
+ if (eh.e_ident[EI_MAG0] != ELFMAG0 ||
+kern/syscall/loadelf.c:     eh.e_ident[EI_MAG1] != ELFMAG1 ||
+kern/syscall/loadelf.c:     eh.e_ident[EI_MAG2] != ELFMAG2 ||
+kern/syscall/loadelf.c:     eh.e_ident[EI_MAG3] != ELFMAG3 ||
+kern/syscall/loadelf.c:     eh.e_ident[EI_CLASS] != ELFCLASS32 ||
+kern/syscall/loadelf.c:     eh.e_ident[EI_DATA] != ELFDATA2MSB ||
+
+
+kern/include/elf.h
+/* Offsets for the 1-byte fields within e_ident[] */
+#define	EI_MAG0		0	/* '\177' */
+#define	EI_MAG1		1	/* 'E'    */
+#define	EI_MAG2		2	/* 'L'    */
+#define	EI_MAG3		3	/* 'F'    */
+/* For e_ident[EI_MAG0..3] */
+#define	ELFMAG0		0x7f
+#define	ELFMAG1		'E'
+#define	ELFMAG2		'L'
+#define	ELFMAG3		'F'
+
+answer: 
+The ELF magic numbers are: 0x7f, 'E', 'L', 'F'
+
+
+2. What is the difference between UIO_USERISPACE and UIO_USERSPACE? When should one use UIO_SYSSPACE instead?
+
+kern/include/uio.h
+/* Source/destination. */
+enum uio_seg {
+        UIO_USERISPACE,			/* User process code. */
+        UIO_USERSPACE,			/* User process data. */
+        UIO_SYSSPACE,			/* Kernel. */
+};
+
+kern/syscall/loadelf.c
+load_segment function, u.uio_segflg = is_executable ? UIO_USERISPACE : UIO_USERSPACE;
+
+
+/*
+ * Copy data from a kernel buffer to a data region defined by a uio struct,
+ * updating the uio struct's offset and resid fields. May alter the iovec
+ * fields as well.
+ *
+ * Before calling this, you should
+ *   (1) set up uio_iov to point to the buffer(s) you want to transfer
+ *       to, and set uio_iovcnt to the number of such buffers;
+ *   (2) initialize uio_offset as desired;
+ *   (3) initialize uio_resid to the total amount of data that can be
+ *       transferred through this uio;
+ *   (4) set up uio_seg and uio_rw correctly;
+ *   (5) if uio_seg is UIO_SYSSPACE, set uio_space to NULL; otherwise,
+ *       initialize uio_space to the address space in which the buffer
+ *       should be found.
+ *
+ * After calling,
+ *   (1) the contents of uio_iov and uio_iovcnt may be altered and
+ *       should not be interpreted;
+ *   (2) uio_offset will have been incremented by the amount transferred;
+ *   (3) uio_resid will have been decremented by the amount transferred;
+ *   (4) uio_segflg, uio_rw, and uio_space will be unchanged.
+ *
+ * uiomove() may be called repeatedly on the same uio to transfer
+ * additional data until the available buffer space the uio refers to
+ * is exhausted.
+ *
+ * Note that the actual value of uio_offset is not interpreted. It is
+ * provided (and updated by uiomove) to allow for easier file seek
+ * pointer management.
+ *
+ * When uiomove is called, the address space presently in context must
+ * be the same as the one recorded in uio_space. This is an important
+ * sanity check if I/O has been queued.
+ */
+int uiomove(void *kbuffer, size_t len, struct uio *uio);
+
+answer:
+Difference between UIO_USERISPACE and UIO_USERSPACE:
+UIO_USERISPACE is used for user process code, and it is executable segments.
+UIO_USERSPACE is used for user process data and it is not executable segments.
+
+When to use UIO_SYSSPACE:
+UIO_SYSSPACE is used when the buffer is in kernel. This is needed when the kernel is reading or writing to its own memory buffers instead of user process memory.
+In load_segment function, it chooses between UIO_USERISPACE and UIO_USERSPACE based on whether the segment is executable or not.
+
+
+3. Why can the struct uio that is used to read in a segment be allocated on the stack in load_segment() (i.e., where does the memory read actually go)?
+
+kern/syscall/loadelf.c
+
+/*
+ * Load a segment at virtual address VADDR. The segment in memory
+ * extends from VADDR up to (but not including) VADDR+MEMSIZE. The
+ * segment on disk is located at file offset OFFSET and has length
+ * FILESIZE.
+ *
+ * FILESIZE may be less than MEMSIZE; if so the remaining portion of
+ * the in-memory segment should be zero-filled.
+ *
+ * Note that uiomove will catch it if someone tries to load an
+ * executable whose load address is in kernel space. If you should
+ * change this code to not use uiomove, be sure to check for this case
+ * explicitly.
+ */
+static
+int
+load_segment():
+iov.iov_ubase = (userptr_t)vaddr;
+
+
+answer: 
+The struct uio can be allocated on the stack because the actual data being read, by VOP_READ(v, &u), uses the information in the uio structure to transfer data to the virtual address space. The actual data goes to the user process's address space at virtual address vaddr.
+
+
+
+4. In runprogram(), why is it important to call vfs_close() before going to usermode?
+
+kern/syscall/runprogram.c
+
+answer: 
+Because enter_new_process() switches to usermode and never returns to the kernel code. Since the function doesn't return, closing must be done before calling it. If vfs_close() isn't called beforehand, the file would remain open forever, causing a resource leak.
+
+
+5. What function forces the processor to switch into usermode? Is this function machine dependent?
+
+kern/syscall/runprogram.c
+kern/arch/mips/locore/trap.c
+
+answer: 
+According to runprogram(), enter_new_process() is the function that forces the processor to switch into usermode. 
+It is machine-dependent since the enter_new_process function is defined in kern/arch/mips/locore/trap.c which is in the mips directory
+
+
+6. In what file are copyin and copyout defined? memmove? Why can't copyin and copyout be implemented as simply as memmove?
+
+kern/vm/copyinout.c
+/*
+ * copyin
+ *
+ * Copy a block of memory of length LEN from user-level address USERSRC
+ * to kernel address DEST. We can use memcpy because it's protected by
+ * the tm_badfaultfunc/copyfail logic.
+ */
+int
+copyin(const_userptr_t usersrc, void *dest, size_t len)
+{
+	int result;
+	size_t stoplen;
+
+	result = copycheck(usersrc, len, &stoplen);
+	if (result) {
+		return result;
+	}
+	if (stoplen != len) {
+		/* Single block, can't legally truncate it. */
+		return EFAULT;
+	}
+
+	curthread->t_machdep.tm_badfaultfunc = copyfail;
+
+	result = setjmp(curthread->t_machdep.tm_copyjmp);
+	if (result) {
+		curthread->t_machdep.tm_badfaultfunc = NULL;
+		return EFAULT;
+	}
+
+	memcpy(dest, (const void *)usersrc, len);
+
+	curthread->t_machdep.tm_badfaultfunc = NULL;
+	return 0;
+}
+
+/*
+ * copyout
+ *
+ * Copy a block of memory of length LEN from kernel address SRC to
+ * user-level address USERDEST. We can use memcpy because it's
+ * protected by the tm_badfaultfunc/copyfail logic.
+ */
+int
+copyout(const void *src, userptr_t userdest, size_t len)
+{
+	int result;
+	size_t stoplen;
+
+	result = copycheck(userdest, len, &stoplen);
+	if (result) {
+		return result;
+	}
+	if (stoplen != len) {
+		/* Single block, can't legally truncate it. */
+		return EFAULT;
+	}
+
+	curthread->t_machdep.tm_badfaultfunc = copyfail;
+
+	result = setjmp(curthread->t_machdep.tm_copyjmp);
+	if (result) {
+		curthread->t_machdep.tm_badfaultfunc = NULL;
+		return EFAULT;
+	}
+
+	memcpy((void *)userdest, src, len);
+
+	curthread->t_machdep.tm_badfaultfunc = NULL;
+	return 0;
+}
+
+answer:
+copyin and copyout are defined in kern/vm/copyinout.c, and memmove is defined in common/libc/string/memmove.c
+copyin and copyout cannot be implemented as simply as memmove because copyin and copyout do their jobs between kernel and user space and they must protect the kernel from invalid user addresses. They validate addresses with copycheck() and use setjmp  to perform recovery. memmove only works with kernel memory and assumes all addresses are valid - using it directly on user pointers could crash the kernel.
+
+
+7. What (briefly) is the purpose of userptr_t?
+kern/include/types.h
+/*
+ * Define userptr_t as a pointer to a one-byte struct, so it won't mix
+ * with other pointers.
+ */
+
+struct __userptr { char _dummy; };
+typedef struct __userptr *userptr_t;
+typedef const struct __userptr *const_userptr_t;
+
+answer: 
+userptr_t is a pointer type that distinguishes user space pointers from kernel pointers. 
+
+
+8. What is the numerical value of the exception code for a MIPS system call?
+
+kern/arch/mips/include/trapframe.h
+#define EX_SYS    8    /* Syscall */
+
+answer: 
+8
+
+9. 4 bytes, tf->tf_epc += 4.
+10. Because the kill_curthread() panics the whole kernel instead of cleanly terminating the current thread.
+11. Since MIPS only passes 4 args in registors, fifth and later are on the user stack.
+Hence the kernel needs to fetch them from user memory. 
+What we need to extend the kernel side to read extra arguments.
+12. The purpose is to avoid duplicating the boilerplate for all syscall, also ensure all stubs use the same ABI.
+13. syscall().
+14. arg0: tf->tf_a0.
+arg1: lower 32 bits in tf->tf_a2, high 32 bits in tf->tf_a3.
+arg2: it's in the user stack not the register. In tf->tf_sp+16.
+To return 64 bits result, put low 32 in tf->tf_v0, high in tf->tf_v1
+15. Open a file: vfs_open(path, flags, mode, &vnode).
+Read the file: VOP_READ(vnode, &uio).
+Wrtie to the file: VOP_WRITE(vnode, &uio).
+structure for an open file: struct vnode.
+16. VOP_INCREF: It stores the struct vnoden so the object can't be reclaimed while using it.
+VOP_DECREF: It determines is the VFS us free to reclaim the vnode.
