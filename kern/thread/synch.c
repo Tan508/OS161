@@ -140,11 +140,12 @@ V(struct semaphore *sem)
 
 
 
-// Simple mutual exclusion lock using a wait channel.
-// - Only one thread can hold the lock at a time (tracked by lk_holder)
-// - Threads that can't acquire the lock sleep on a wait channel
-// - When lock is released, one waiting thread is woken up
-// - Uses spinlock to protect internal state from race conditions
+/* Simple mutual exclusion lock using a wait channel.
+* - Only one thread can hold the lock at a time (tracked by lk_holder)
+* - Threads that can't acquire the lock sleep on a wait channel
+* - When lock is released, one waiting thread is woken up
+* - Uses spinlock to protect internal state from race conditions
+*/
 struct lock *
 lock_create(const char *name)
 {
@@ -163,9 +164,8 @@ lock_create(const char *name)
                 return NULL;
         }
 
-        // add stuff here as needed
 
-	// create wait channel for threads blocked on this lock	
+	/* create wait channel for threads blocked on this lock	*/
 	lock->lk_wchan = wchan_create(lock->lk_name);
         if (lock->lk_wchan == NULL) {
                 kfree(lock->lk_name);
@@ -173,10 +173,10 @@ lock_create(const char *name)
                 return NULL;
         }
         
-	// initialize spinlock to protect lock state
+	/* initialize spinlock to protect lock state */
         spinlock_init(&lock->lk_spinlock);
         
-	// There's no thread holding lock at the initial point. 
+	/* There's no thread holding lock at the initial point. */
 	lock->lk_holder = NULL;
         
 
@@ -187,16 +187,13 @@ void
 lock_destroy(struct lock *lock)
 {
         KASSERT(lock != NULL);
-
-        // add stuff here as needed
-
 	
 	KASSERT(lock->lk_holder == NULL);
 
-        // clean up resources
+        /* clean up resources */
         spinlock_cleanup(&lock->lk_spinlock);
         
-	// wchan_destroy will assert if threads are waiting
+	/* wchan_destroy will assert if threads are waiting */
 	wchan_destroy(lock->lk_wchan);
 
         kfree(lock->lk_name);
@@ -206,15 +203,14 @@ lock_destroy(struct lock *lock)
 void
 lock_acquire(struct lock *lock)
 {
-        // Write this
 
 	
 	KASSERT(lock != NULL);
 
-	// cannot block in inturrupt context
+	/* cannot block in inturrupt context */
         KASSERT(curthread->t_in_interrupt == false);
         
-	// try to acquire lock, and then sleep if unavailable
+	/* try to acquire lock, and then sleep if unavailable */
         spinlock_acquire(&lock->lk_spinlock);
         while (lock->lk_holder != NULL) {
                 wchan_sleep(lock->lk_wchan, &lock->lk_spinlock);
@@ -231,15 +227,14 @@ lock_acquire(struct lock *lock)
 void
 lock_release(struct lock *lock)
 {
-        // Write this
 
 	
 	KASSERT(lock != NULL);
         
-	// release lock and wake up one waiting thread
+	/* release lock and wake up one waiting thread */
         spinlock_acquire(&lock->lk_spinlock);
         
-	// only holder can release lock. 
+	/* only holder can release lock. */
         KASSERT(lock->lk_holder == curthread);
         lock->lk_holder = NULL;
         
@@ -251,12 +246,12 @@ lock_release(struct lock *lock)
 bool
 lock_do_i_hold(struct lock *lock)
 {
-        // Write this
+        
 
 	
 	KASSERT(lock != NULL);
         
-	// check whether current thread holds the lock or not.
+	/* check whether current thread holds the lock or not. */
         bool result;
         
         spinlock_acquire(&lock->lk_spinlock);
@@ -291,7 +286,7 @@ cv_create(const char *name)
                 return NULL;
         }
         
-	// create wait channel for threads blocked on this CV
+	/* create wait channel for threads blocked on this CV */
         cv->cv_wchan = wchan_create(cv->cv_name);
         if (cv->cv_wchan == NULL) {
                 kfree(cv->cv_name);
@@ -299,7 +294,7 @@ cv_create(const char *name)
                 return NULL;
         }
         
-        // initalize spinlock to protect cv 
+        /* initalize spinlock to protect cv */
         spinlock_init(&cv->cv_spinlock);
 
         return cv;
@@ -309,9 +304,9 @@ void
 cv_destroy(struct cv *cv)
 {
         KASSERT(cv != NULL);
-        // add stuff here as needed
+        
 	
-	// clean up resources
+	/* clean up resources */
         spinlock_cleanup(&cv->cv_spinlock);
         wchan_destroy(cv->cv_wchan);
 
@@ -321,22 +316,23 @@ cv_destroy(struct cv *cv)
 void
 cv_wait(struct cv *cv, struct lock *lock)
 {
-        // Write this
+        
 	
 	KASSERT(cv != NULL);
         KASSERT(lock != NULL);
 
-	// cannot block in interrupt context
+	/* cannot block in interrupt context */
         KASSERT(curthread->t_in_interrupt == false);
         
-	// lock must be held to wait on CV
+	/* lock must be held to wait on CV */
 	KASSERT(lock_do_i_hold(lock));
         
-        // To atomically release lock and sleep on CV, 
-	// 1. acquire cv spinlock for atomicity
-	// 2. release lock(users') 
-	// 3. sleep on cv wait channel while releasing cv spinlock
-	// 4. wake up and acquire lock again
+        /* To atomically release lock and sleep on CV, 
+	* 1. acquire cv spinlock for atomicity
+	* 2. release lock(users') 
+	* 3. sleep on cv wait channel while releasing cv spinlock
+	* 4. wake up and acquire lock again
+	*/
 	spinlock_acquire(&cv->cv_spinlock);
         lock_release(lock);
 	wchan_sleep(cv->cv_wchan, &cv->cv_spinlock);
@@ -349,15 +345,15 @@ cv_wait(struct cv *cv, struct lock *lock)
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
-        // Write this
+       
 
 	KASSERT(cv != NULL);
         KASSERT(lock != NULL);
 
-	// hold lock to signal
+	/* hold lock to signal */
         KASSERT(lock_do_i_hold(lock));
         
-        // use wake up one to wake only one thread
+        /* use wake up one to wake only one thread */
         spinlock_acquire(&cv->cv_spinlock);
         wchan_wakeone(cv->cv_wchan, &cv->cv_spinlock);
         spinlock_release(&cv->cv_spinlock);
@@ -369,15 +365,15 @@ cv_signal(struct cv *cv, struct lock *lock)
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
-	// Write this
+	
 
 	KASSERT(cv != NULL);
         KASSERT(lock != NULL);
 
-	// hold the lock to broadcast
+	/* hold the lock to broadcast */
         KASSERT(lock_do_i_hold(lock));
         
-        // wake up all waiting threads on cv by using wchan_wakeall. 
+        /* wake up all waiting threads on cv by using wchan_wakeall. */
         spinlock_acquire(&cv->cv_spinlock);
         wchan_wakeall(cv->cv_wchan, &cv->cv_spinlock);
         spinlock_release(&cv->cv_spinlock);

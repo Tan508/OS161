@@ -14,8 +14,6 @@
 static int ropes_left = NROPES;
 
 /* Data structures for rope mappings */
-
-/* Implement this! */
 struct rope {
     	bool severed;          
     	int rope_index;         
@@ -35,8 +33,6 @@ static struct rope ropes[NROPES];
 
 
 /* Synchronization primitives */
-
-/* Implement this! */
 static struct lock *ropes_left_lock;       
 static struct cv *balloon_cv;              
 static struct lock *balloon_lock;          
@@ -70,7 +66,6 @@ dandelion(void *p, unsigned long arg)
 
 	kprintf("Dandelion thread starting\n");
 
-	/* Implement this function */
 	
 	int remaining;
     	do {
@@ -122,7 +117,6 @@ marigold(void *p, unsigned long arg)
 
 	kprintf("Marigold thread starting\n");
 
-	/* Implement this function */
 
 
 	int remaining;
@@ -184,8 +178,6 @@ flowerkiller(void *p, unsigned long arg)
 	(void)arg;
 
 	kprintf("Lord FlowerKiller thread starting\n");
-
-	/* Implement this function */
 	
 	
 	int remaining;
@@ -249,10 +241,10 @@ balloon(void *p, unsigned long arg)
 	/* Implement this function */
 	
 	
-	// balloon_lock is for cv_wait	
+	/* balloon_lock is for cv_wait	*/
 	lock_acquire(balloon_lock);
     	
-	// rope_left_lock is required in here to get exact ropes_left
+	/* rope_left_lock is required in here to get exact ropes_left */
 	lock_acquire(ropes_left_lock);
     	while (ropes_left > 0) {
         	lock_release(ropes_left_lock);
@@ -273,7 +265,7 @@ balloon(void *p, unsigned long arg)
 }
 
 
-// Change this function as necessary
+/* Change this function as necessary */
 int
 airballoon(int nargs, char **args)
 {
@@ -283,7 +275,7 @@ airballoon(int nargs, char **args)
     	(void)args;
 
 
-	// initialize ropes, stakes, and hooks
+	/* initialize ropes, stakes, and hooks */
     	for (i = 0; i < NROPES; i++) {
         	ropes[i].severed = false;
         	ropes[i].rope_index = i;
@@ -302,7 +294,7 @@ airballoon(int nargs, char **args)
     	}
 
     
-	// initialize Synchronization primitives
+	/* initialize Synchronization primitives */
     	ropes_left = NROPES;
     	ropes_left_lock = lock_create("ropes_left");
     	balloon_cv = cv_create("balloon");
@@ -315,7 +307,7 @@ airballoon(int nargs, char **args)
         	panic("airballoon: failed to create synchronization primitives\n");
     	}
 
-    	// create threads
+    	/* create threads */
     	err = thread_fork("Marigold Thread", NULL, marigold, NULL, 0);
     	if(err)
         	goto panic;
@@ -335,12 +327,12 @@ airballoon(int nargs, char **args)
     	if(err)
         	goto panic;
 
-    	// main thread will be continued after processing 11 threads.  
-    	for (i = 0; i < 11; i++) {  // Number of total threads are 11. Dandelion(1) + merigold(1) + flowerkiller(8) + balloon(1) 
+    	/* main thread will be continued after processing 11 threads.  */
+    	for (i = 0; i < 11; i++) {  /* Number of total threads are 11. Dandelion(1) + merigold(1) + flowerkiller(8) + balloon(1) */
         	P(threads_done_sem);
     	}
 
-    	// cleanup
+    	/* cleanup */
     	for (i = 0; i < NROPES; i++) {
         	lock_destroy(stakes[i].lock);
         	lock_destroy(hooks[i].lock);
@@ -351,7 +343,7 @@ airballoon(int nargs, char **args)
     	cv_destroy(balloon_cv);
     	sem_destroy(threads_done_sem);
 
-	// main thread exit
+	/* main thread exit */
     	kprintf("Main thread done\n");
     	goto done;
 
