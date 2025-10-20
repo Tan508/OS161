@@ -61,7 +61,7 @@ simple_test()
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (2nd time)", file);
-	}
+	} 
 	/* ensure null termination */
 	readbuf[40] = 0;
 
