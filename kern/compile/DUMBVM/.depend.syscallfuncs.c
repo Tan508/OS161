@@ -12,4 +12,4 @@ syscallfuncs.o: ../../syscall/syscallfuncs.c ../../include/types.h \
  ../../include/uio.h ../../include/kern/iovec.h ../../include/kern/stat.h \
  ../../include/kern/fcntl.h ../../include/kern/errno.h ../../include/vm.h \
  includelinks/machine/vm.h ../../include/copyinout.h \
- ../../include/filetable.h
+ ../../include/kern/seek.h ../../include/filetable.h

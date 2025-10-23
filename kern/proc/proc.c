@@ -171,11 +171,11 @@ proc_destroy(struct proc *proc)
 
 	// Clean up fd
 	for (int fd = 0; fd < OPEN_MAX; fd++) {
-    		struct filetable *e = proc->ft[fd];
-    		if (e) {
-        		vfs_close(e->vn);
-        		if (e->lock) lock_destroy(e->lock);
-        		kfree(e);
+    		struct filetable *ftable = proc->ft[fd];
+    		if (ftable) {
+        		vfs_close(ftable->vn);
+        		if (ftable->lock) lock_destroy(ftable->lock);
+        		kfree(ftable);
         		proc->ft[fd] = NULL;
     		}
 	}
