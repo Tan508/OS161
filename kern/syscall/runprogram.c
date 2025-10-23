@@ -44,13 +44,84 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include "filetable.h"
+#include <vnode.h>
+#include <synch.h>
+#include <limits.h>
 
-/*
- * Load program "progname" and start running it in usermode.
- * Does not return except on error.
- *
- * Calls vfs_open on progname and thus may destroy it.
- */
+static struct filetable *
+ft_entry_create(struct vnode *vn, int flags)
+{
+    struct filetable *e = kmalloc(sizeof(*e));
+    if (!e) return NULL;
+    e->refcnt = 1;
+    e->vn     = vn;
+    e->offset = 0;
+    e->flags  = flags;
+    e->lock   = lock_create("ft_entry");
+    if (!e->lock) { kfree(e); return NULL; }
+    return e;
+}
+
+static int
+ft_install_at(struct filetable **ft, int want_fd, struct filetable *e)
+{
+    if (want_fd < 0 || want_fd >= OPEN_MAX) return EMFILE;
+    if (ft[want_fd] != NULL) return EBUSY;
+    ft[want_fd] = e;
+    return 0;
+}
+
+#include <lib.h>     // kstrdup, kfree
+#include <vfs.h>
+#include <vnode.h>
+#include <kern/fcntl.h>
+
+static int
+setup_std_fds(void)
+{
+    int err;
+    struct vnode *vn;
+    struct filetable *e;
+
+    /* fd 0: stdin */
+    char *con0 = kstrdup("con:");
+    if (!con0) return ENOMEM;
+    err = vfs_open(con0, O_RDONLY, 0, &vn);
+    kfree(con0);
+    if (err) return err;
+    e = ft_entry_create(vn, O_RDONLY);
+    if (!e) { vfs_close(vn); return ENOMEM; }
+    err = ft_install_at(curproc->ft, 0, e);
+    if (err) { vfs_close(vn); lock_destroy(e->lock); kfree(e); return err; }
+
+    /* fd 1: stdout */
+    char *con1 = kstrdup("con:");
+    if (!con1) return ENOMEM;
+    err = vfs_open(con1, O_WRONLY, 0, &vn);
+    kfree(con1);
+    if (err) return err;
+    e = ft_entry_create(vn, O_WRONLY);
+    if (!e) { vfs_close(vn); return ENOMEM; }
+    err = ft_install_at(curproc->ft, 1, e);
+    if (err) { vfs_close(vn); lock_destroy(e->lock); kfree(e); return err; }
+
+    /* fd 2: stderr */
+    char *con2 = kstrdup("con:");
+    if (!con2) return ENOMEM;
+    err = vfs_open(con2, O_WRONLY, 0, &vn);
+    kfree(con2);
+    if (err) return err;
+    e = ft_entry_create(vn, O_WRONLY);
+    if (!e) { vfs_close(vn); return ENOMEM; }
+    err = ft_install_at(curproc->ft, 2, e);
+    if (err) { vfs_close(vn); lock_destroy(e->lock); kfree(e); return err; }
+
+    return 0;
+}
+
+
+
 int
 runprogram(char *progname)
 {
@@ -59,8 +130,12 @@ runprogram(char *progname)
 	vaddr_t entrypoint, stackptr;
 	int result;
 
+	char *kprog = kstrdup(progname); //make a writable copy
+        if (kprog == NULL) return ENOMEM;
+
 	/* Open the file. */
 	result = vfs_open(progname, O_RDONLY, 0, &v);
+	kfree(kprog);
 	if (result) {
 		return result;
 	}
@@ -97,6 +172,9 @@ runprogram(char *progname)
 		return result;
 	}
 
+	//
+	result = setup_std_fds();
+	if (result) return result;
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,

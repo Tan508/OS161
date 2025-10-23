@@ -59,8 +59,8 @@ __DEAD void enter_new_process(int argc, userptr_t argv, userptr_t env,
 int sys_reboot(int code);
 int sys___time(userptr_t user_seconds, userptr_t user_nanoseconds);
 
-
-
-int sys_open(const_userptr_t filename, int flags, int *retval);
+int sys_write(int fd, const void *buf, size_t nbytes, int32_t *retval);
+int sys_chdir(const char *upath);
+int sys___getcwd(char *buf, size_t buflen, int32_t *retval);
 
 #endif /* _SYSCALL_H_ */

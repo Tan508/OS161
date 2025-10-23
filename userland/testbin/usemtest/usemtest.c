@@ -178,7 +178,7 @@ void
 V(struct usem *sem)
 {
 	ssize_t r;
-	char c;
+	char c = 'x';
 
 	r = write(sem->fd, &c, 1);
 	if (r < 0) {

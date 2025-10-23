@@ -48,6 +48,10 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <kern/limits.h>
+#include <synch.h>
+#include <lib.h>
+#include <vfs.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -165,6 +169,17 @@ proc_destroy(struct proc *proc)
 		as_destroy(as);
 	}
 
+	// Clean up fd
+	for (int fd = 0; fd < OPEN_MAX; fd++) {
+    		struct filetable *e = proc->ft[fd];
+    		if (e) {
+        		vfs_close(e->vn);
+        		if (e->lock) lock_destroy(e->lock);
+        		kfree(e);
+        		proc->ft[fd] = NULL;
+    		}
+	}
+
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
@@ -198,6 +213,11 @@ proc_create_runprogram(const char *name)
 	newproc = proc_create(name);
 	if (newproc == NULL) {
 		return NULL;
+	}
+
+	// Init process fd
+	for (int i = 0; i < OPEN_MAX; i++) {
+		newproc->ft[i] = NULL;
 	}
 
 	/* VM fields */

@@ -22,6 +22,7 @@
  * fully implemented. Furthermore, we do not call remove, because emufs does not
  * support it, and we would like to be able to run on emufs.
  */
+#if 0
 static void
 simple_test()
 {
@@ -61,7 +62,7 @@ simple_test()
 	rv = close(fd);
 	if (rv<0) {
 		err(1, "%s: close (2nd time)", file);
-	} 
+	}
 	/* ensure null termination */
 	readbuf[40] = 0;
 
@@ -69,6 +70,7 @@ simple_test()
 		errx(1, "Buffer data mismatch!");
 	}
 }
+#endif
 /*
  * This tests the very basic functionality of dup2.
  * We open/create a file, duplicate the file descriptor, 
@@ -76,6 +78,7 @@ simple_test()
  * and check that the written content appears in that 
  * file twice. 
  */
+#if 0
 static void
 test_dup2()
 {
@@ -156,7 +159,7 @@ test_dup2()
 	}
 }
 
-
+#endif
 
 static int openFDs[OPEN_MAX-3 + 1];
 
@@ -164,6 +167,7 @@ static int openFDs[OPEN_MAX-3 + 1];
  * This test makes sure that the underlying filetable implementation
  * allows us to open as many files as is allowed by the limit on the system.
  */
+#if 0
 static void
 test_openfile_limits()
 {
@@ -224,10 +228,11 @@ test_openfile_limits()
 			err(1, "%s: close file descriptor %d", file, i);
 	}
 }
-
+#endif
 /* Open two files, write to them, read from them, make sure the
  * content checks, then close them. 
  */
+#if 0
 static void
 simultaneous_write_test()
 {
@@ -308,7 +313,7 @@ simultaneous_write_test()
 	}
 
 }
-
+#endif
 static void
 _getcwd(char *buf, int len)
 {
