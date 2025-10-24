@@ -49,75 +49,137 @@
 #include <synch.h>
 #include <limits.h>
 
+/*
+ * Creates one open file entry from an open vnode
+ * with the open flags
+ */
 static struct filetable *
 ft_entry_create(struct vnode *vn, int flags)
 {
-    struct filetable *e = kmalloc(sizeof(*e));
-    if (!e) return NULL;
-    e->refcnt = 1;
-    e->vn     = vn;
-    e->offset = 0;
-    e->flags  = flags;
-    e->lock   = lock_create("ft_entry");
-    if (!e->lock) { kfree(e); return NULL; }
-    return e;
+    	struct filetable *ftable = kmalloc(sizeof(*ftable));
+    	if (!ftable) {
+		return NULL;
+	}
+
+    	ftable->refcnt = 1;
+    	ftable->vn     = vn;
+    	ftable->offset = 0;
+    	ftable->flags  = flags;
+    	ftable->lock   = lock_create("ft_entry");
+    	if (!ftable->lock) {
+		kfree(ftable);
+		return NULL;
+	}
+
+    	return ftable;
 }
 
+/*
+ * Install open file entry into file descriptor at specific index
+ */
 static int
-ft_install_at(struct filetable **ft, int want_fd, struct filetable *e)
+ft_install_at(struct filetable **ft, int want_fd, struct filetable *ftable)
 {
-    if (want_fd < 0 || want_fd >= OPEN_MAX) return EMFILE;
-    if (ft[want_fd] != NULL) return EBUSY;
-    ft[want_fd] = e;
-    return 0;
+    	if (want_fd < 0 || want_fd >= OPEN_MAX) {
+		return EMFILE;
+	}
+
+    	if (ft[want_fd] != NULL) {
+		return EBUSY;
+	}
+
+    	ft[want_fd] = ftable;
+    	return 0;
 }
 
-#include <lib.h>     // kstrdup, kfree
-#include <vfs.h>
-#include <vnode.h>
-#include <kern/fcntl.h>
-
+/*
+ * Setting up for stdioe
+ */
 static int
 setup_std_fds(void)
 {
-    int err;
-    struct vnode *vn;
-    struct filetable *e;
+    	int err;
+    	struct vnode *vn;
+    	struct filetable *ftable;
 
-    /* fd 0: stdin */
-    char *con0 = kstrdup("con:");
-    if (!con0) return ENOMEM;
-    err = vfs_open(con0, O_RDONLY, 0, &vn);
-    kfree(con0);
-    if (err) return err;
-    e = ft_entry_create(vn, O_RDONLY);
-    if (!e) { vfs_close(vn); return ENOMEM; }
-    err = ft_install_at(curproc->ft, 0, e);
-    if (err) { vfs_close(vn); lock_destroy(e->lock); kfree(e); return err; }
+    	/* fd 0: stdin */
+    	char *con0 = kstrdup("con:");
+    	if (!con0) {
+		return ENOMEM;
+	}
 
-    /* fd 1: stdout */
-    char *con1 = kstrdup("con:");
-    if (!con1) return ENOMEM;
-    err = vfs_open(con1, O_WRONLY, 0, &vn);
-    kfree(con1);
-    if (err) return err;
-    e = ft_entry_create(vn, O_WRONLY);
-    if (!e) { vfs_close(vn); return ENOMEM; }
-    err = ft_install_at(curproc->ft, 1, e);
-    if (err) { vfs_close(vn); lock_destroy(e->lock); kfree(e); return err; }
+    	err = vfs_open(con0, O_RDONLY, 0, &vn);
+    	kfree(con0);
+    	if (err) {
+		return err;
+	}
 
-    /* fd 2: stderr */
-    char *con2 = kstrdup("con:");
-    if (!con2) return ENOMEM;
-    err = vfs_open(con2, O_WRONLY, 0, &vn);
-    kfree(con2);
-    if (err) return err;
-    e = ft_entry_create(vn, O_WRONLY);
-    if (!e) { vfs_close(vn); return ENOMEM; }
-    err = ft_install_at(curproc->ft, 2, e);
-    if (err) { vfs_close(vn); lock_destroy(e->lock); kfree(e); return err; }
+    	ftable = ft_entry_create(vn, O_RDONLY);
+    	if (!ftable) {
+		vfs_close(vn);
+		return ENOMEM;
+	}
 
-    return 0;
+    	err = ft_install_at(curproc->ft, 0, ftable);
+    	if (err) {
+		vfs_close(vn);
+		lock_destroy(ftable->lock);
+		kfree(ftable);
+		return err;
+	}
+
+    	/* fd 1: stdout */
+    	char *con1 = kstrdup("con:");
+    	if (!con1) {
+		return ENOMEM;
+	}
+
+    	err = vfs_open(con1, O_WRONLY, 0, &vn);
+    	kfree(con1);
+    	if (err) {
+		return err;
+	}
+
+    	ftable = ft_entry_create(vn, O_WRONLY);
+    	if (!ftable) {
+		vfs_close(vn);
+		return ENOMEM;
+	}
+
+    	err = ft_install_at(curproc->ft, 1, ftable);
+    	if (err) {
+		vfs_close(vn);
+		lock_destroy(ftable->lock);
+		kfree(ftable);
+		return err;
+	}
+
+    	/* fd 2: stderr */
+    	char *con2 = kstrdup("con:");
+    	if (!con2) {
+		return ENOMEM;
+	}
+
+    	err = vfs_open(con2, O_WRONLY, 0, &vn);
+    	kfree(con2);
+    	if (err) {
+		return err;
+    	}
+	ftable = ft_entry_create(vn, O_WRONLY);
+    	if (!ftable) {
+		vfs_close(vn);
+		return ENOMEM;
+	}
+
+    	err = ft_install_at(curproc->ft, 2, ftable);
+    	if (err) {
+		vfs_close(vn);
+		lock_destroy(ftable->lock);
+		kfree(ftable);
+		return err;
+	}
+
+    	return 0;
 }
 
 
@@ -130,7 +192,7 @@ runprogram(char *progname)
 	vaddr_t entrypoint, stackptr;
 	int result;
 
-	char *kprog = kstrdup(progname); //make a writable copy
+	char *kprog = kstrdup(progname); // Make a writable copy
         if (kprog == NULL) return ENOMEM;
 
 	/* Open the file. */
@@ -172,9 +234,12 @@ runprogram(char *progname)
 		return result;
 	}
 
-	//
+	/*  Finish seting up stdioe */
 	result = setup_std_fds();
-	if (result) return result;
+	if (result) {
+		return result;
+	}
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,
