@@ -14,4 +14,13 @@ struct filetable {
     struct lock *lock;
 };
 
+struct ft {
+    struct filetable *entries[OPEN_MAX];
+    struct lock *ft_lock;
+};
+
+/* Helpers */
+int  ft_shallow_copy(struct proc *parent, struct proc *child);
+void ft_destroy(struct ft *table);
+
 #endif  /*FILETABLE_H*/

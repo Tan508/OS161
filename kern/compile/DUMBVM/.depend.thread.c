@@ -9,7 +9,7 @@ thread.o: ../../thread/thread.c ../../include/types.h \
  ../../include/setjmp.h includelinks/kern/machine/setjmp.h \
  ../../include/threadprivate.h ../../include/proc.h \
  ../../include/filetable.h ../../include/synch.h ../../include/limits.h \
- ../../include/kern/limits.h ../../include/vnode.h \
+ ../../include/kern/limits.h ../../include/vnode.h ../../include/pid.h \
  ../../include/current.h includelinks/machine/current.h \
  ../../include/addrspace.h ../../include/vm.h opt-dumbvm.h \
  ../../include/mainbus.h opt-synchprobs.h

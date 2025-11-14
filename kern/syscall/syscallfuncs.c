@@ -12,7 +12,7 @@
 #include <copyinout.h>
 #include <limits.h>
 #include <kern/seek.h>
-#include "filetable.h"
+#include <filetable.h>
 
 /*
  * file_get returns filetable entry with file descriptor (fd).
@@ -20,7 +20,7 @@
  */
 static struct filetable *file_get(int fd) {
     if (fd < 0 || fd >= OPEN_MAX) return NULL;
-    return curproc->ft[fd];
+    return curproc->proc_ft->entries[fd];
 }
 
 /*
@@ -29,7 +29,7 @@ static struct filetable *file_get(int fd) {
  * */
 static int file_allocfd(void) {
     for (int i = 0; i < OPEN_MAX; i++) {
-        if (curproc->ft[i] == NULL)
+        if (curproc->proc_ft->entries[i] == NULL)
             return i;
     }
     return -1;
@@ -106,7 +106,7 @@ int sys_open(const_userptr_t filename, int flags, mode_t mode, int *retval) {
    	}
 	
 	/* save filetable and return file descripter */
-    	curproc->ft[fd] = of;
+    	curproc->proc_ft->entries[fd] = of;
     	*retval = fd;
     	return 0;
 }
@@ -165,7 +165,7 @@ int sys_close(int fd) {
         	lock_release(of->lock);
     	}
 
-    	curproc->ft[fd] = NULL;
+    	curproc->proc_ft->entries[fd] = NULL;
     	return 0;
 }
 
@@ -188,7 +188,7 @@ int sys_dup2(int oldfd, int newfd, int32_t *retval) {
         	return 0;
     	}
 	/* close newfd if it is opened */
-    	if (curproc->ft[newfd] != NULL)
+    	if (curproc->proc_ft->entries[newfd] != NULL)
         	sys_close(newfd);
 
 	/* increment reference counter in filetable */
@@ -196,7 +196,7 @@ int sys_dup2(int oldfd, int newfd, int32_t *retval) {
    	oldf->refcnt++;
     	lock_release(oldf->lock);
 
-    	curproc->ft[newfd] = oldf;
+    	curproc->proc_ft->entries[newfd] = oldf;
     	*retval = newfd;
     	return 0;
 }
@@ -218,18 +218,23 @@ int sys_write(int fd, const void *buf, size_t nbytes, int32_t *retval)
 		return EFAULT;
 	}
 
-	struct filetable *ftable = curproc->ft[fd];
+	struct ft *ftable = curproc->proc_ft;
 	/* fd is not opened */
 	if (ftable == NULL) {
 		return EBADF;  // Not open
 	}
 
-	/* must be open for writing */
-	if ((ftable->flags & (O_WRONLY | O_RDWR)) == 0) {
+	struct filetable *table = ftable->entries[fd];
+	if (table == NULL) {
 		return EBADF;
 	}
 
-	lock_acquire(ftable->lock);
+	/* must be open for writing */
+	if ((table->flags & O_ACCMODE) == O_RDONLY) {
+		return EBADF;
+	}
+
+	lock_acquire(table->lock);
 
 	struct iovec iov;
 	struct uio u;
@@ -241,22 +246,22 @@ int sys_write(int fd, const void *buf, size_t nbytes, int32_t *retval)
     	u.uio_iov =  &iov;
     	u.uio_iovcnt = 1;
     	u.uio_resid = nbytes;
-    	u.uio_offset = ftable->offset;
+    	u.uio_offset = table->offset;
     	u.uio_segflg = UIO_USERSPACE;
     	u.uio_rw = UIO_WRITE;
     	u.uio_space = curproc->p_addrspace;
 
-	int result = VOP_WRITE(ftable->vn, &u);
+	int result = VOP_WRITE(table->vn, &u);
 	if (result) {
-		lock_release(ftable->lock);
+		lock_release(table->lock);
 		return result;
 	}
 
 	/* update offset and return written bytes */
 	size_t wrote = nbytes - u.uio_resid;
-	ftable->offset += (off_t)wrote;
+	table->offset += (off_t)wrote;
 
-	lock_release(ftable->lock);
+	lock_release(table->lock);
 
 	*retval = (int32_t)wrote;
 	return 0;
@@ -273,7 +278,7 @@ int sys_lseek(int fd, off_t pos, int whence, int32_t *retval, int32_t *retval2)
 		return EBADF;
 	}
 
-	struct filetable *ftable = curproc->ft[fd];
+	struct filetable *ftable = curproc->proc_ft->entries[fd];
 	if (ftable == NULL) {
 		return EBADF;
 	}

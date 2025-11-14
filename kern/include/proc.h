@@ -38,7 +38,10 @@
 
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
-#include "filetable.h"
+#include <filetable.h>
+#include <synch.h>
+#include <types.h>
+#include <pid.h>
 
 struct addrspace;
 struct vnode;
@@ -57,8 +60,15 @@ struct proc {
 	/* VFS */
 	struct vnode *p_cwd;		/* current working directory */
 
-	/* add more material here as needed */
-	struct filetable *ft[OPEN_MAX];
+	struct ft *proc_ft;
+
+	/* PID */
+	pid_t pid;
+	pid_t ppid;
+	bool p_exited;  
+	int p_exitcode;         
+	struct lock *p_waitlock;   
+	struct cv *p_waitcv;   
 };
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -85,5 +95,6 @@ struct addrspace *proc_getas(void);
 /* Change the address space of the current process, and return the old one. */
 struct addrspace *proc_setas(struct addrspace *);
 
+struct proc *proc_create(const char *name);
 
 #endif /* _PROC_H_ */

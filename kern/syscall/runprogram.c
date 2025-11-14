@@ -78,18 +78,18 @@ ft_entry_create(struct vnode *vn, int flags)
  * Install open file entry into file descriptor at specific index
  */
 static int
-ft_install_at(struct filetable **ft, int want_fd, struct filetable *ftable)
+ft_install_at(struct ft *table, int want_fd, struct filetable *ftable)
 {
-    	if (want_fd < 0 || want_fd >= OPEN_MAX) {
+    if (want_fd < 0 || want_fd >= OPEN_MAX) {
 		return EMFILE;
 	}
 
-    	if (ft[want_fd] != NULL) {
+    if (table->entries[want_fd] != NULL) {
 		return EBUSY;
 	}
 
-    	ft[want_fd] = ftable;
-    	return 0;
+    table->entries[want_fd] = ftable;
+	return 0;
 }
 
 /*
@@ -98,30 +98,51 @@ ft_install_at(struct filetable **ft, int want_fd, struct filetable *ftable)
 static int
 setup_std_fds(void)
 {
-    	int err;
-    	struct vnode *vn;
-    	struct filetable *ftable;
+    int err;
+    struct vnode *vn;
+    struct filetable *ftable;
 
-    	/* fd 0: stdin */
-    	char *con0 = kstrdup("con:");
-    	if (!con0) {
+	if (curproc->proc_ft == NULL) {
+        struct ft *table = kmalloc(sizeof(struct ft));
+        if (table == NULL) {
+            return ENOMEM;
+        }
+
+        table->ft_lock = lock_create("ft_lock");
+        if (table->ft_lock == NULL) {
+            kfree(table);
+            return ENOMEM;
+        }
+
+        for (int i = 0; i < OPEN_MAX; i++) {
+            table->entries[i] = NULL;
+        }
+
+        curproc->proc_ft = table;
+    }
+
+    struct ft *table = curproc->proc_ft;
+
+    /* fd 0: stdin */
+    char *con0 = kstrdup("con:");
+	if (!con0) {
 		return ENOMEM;
 	}
 
-    	err = vfs_open(con0, O_RDONLY, 0, &vn);
-    	kfree(con0);
-    	if (err) {
+    err = vfs_open(con0, O_RDONLY, 0, &vn);
+	kfree(con0);
+	if (err) {
 		return err;
 	}
 
-    	ftable = ft_entry_create(vn, O_RDONLY);
-    	if (!ftable) {
+    ftable = ft_entry_create(vn, O_RDONLY);
+    if (!ftable) {
 		vfs_close(vn);
 		return ENOMEM;
 	}
 
-    	err = ft_install_at(curproc->ft, 0, ftable);
-    	if (err) {
+    err = ft_install_at(table, 0, ftable);
+    if (err) {
 		vfs_close(vn);
 		lock_destroy(ftable->lock);
 		kfree(ftable);
@@ -129,50 +150,50 @@ setup_std_fds(void)
 	}
 
     	/* fd 1: stdout */
-    	char *con1 = kstrdup("con:");
-    	if (!con1) {
+    char *con1 = kstrdup("con:");
+    if (!con1) {
 		return ENOMEM;
 	}
 
-    	err = vfs_open(con1, O_WRONLY, 0, &vn);
-    	kfree(con1);
-    	if (err) {
+	err = vfs_open(con1, O_WRONLY, 0, &vn);
+	kfree(con1);
+	if (err) {
 		return err;
 	}
 
-    	ftable = ft_entry_create(vn, O_WRONLY);
-    	if (!ftable) {
+    ftable = ft_entry_create(vn, O_WRONLY);
+    if (!ftable) {
 		vfs_close(vn);
 		return ENOMEM;
 	}
 
-    	err = ft_install_at(curproc->ft, 1, ftable);
-    	if (err) {
+    err = ft_install_at(table, 1, ftable);
+    if (err) {
 		vfs_close(vn);
 		lock_destroy(ftable->lock);
 		kfree(ftable);
 		return err;
 	}
 
-    	/* fd 2: stderr */
-    	char *con2 = kstrdup("con:");
-    	if (!con2) {
+    /* fd 2: stderr */
+    char *con2 = kstrdup("con:");
+    if (!con2) {
 		return ENOMEM;
 	}
 
-    	err = vfs_open(con2, O_WRONLY, 0, &vn);
-    	kfree(con2);
-    	if (err) {
+    err = vfs_open(con2, O_WRONLY, 0, &vn);
+    kfree(con2);
+    if (err) {
 		return err;
-    	}
+    }
 	ftable = ft_entry_create(vn, O_WRONLY);
-    	if (!ftable) {
+    if (!ftable) {
 		vfs_close(vn);
 		return ENOMEM;
 	}
 
-    	err = ft_install_at(curproc->ft, 2, ftable);
-    	if (err) {
+    err = ft_install_at(table, 2, ftable);
+    if (err) {
 		vfs_close(vn);
 		lock_destroy(ftable->lock);
 		kfree(ftable);

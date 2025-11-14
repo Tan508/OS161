@@ -52,6 +52,8 @@
 #include <synch.h>
 #include <lib.h>
 #include <vfs.h>
+#include <pid.h>
+#include <filetable.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -61,7 +63,6 @@ struct proc *kproc;
 /*
  * Create a proc structure.
  */
-static
 struct proc *
 proc_create(const char *name)
 {
@@ -86,6 +87,28 @@ proc_create(const char *name)
 	/* VFS fields */
 	proc->p_cwd = NULL;
 
+	/* PID and FD fields */
+	proc->proc_ft = NULL;
+	proc->pid = 0;
+	proc->ppid = 0;
+
+	proc->p_waitlock = lock_create("proc_waitlock");
+	if (proc->p_waitlock == NULL) {
+        kfree(proc->p_name);
+        kfree(proc);
+        return NULL;
+	}
+
+	proc->p_waitcv = cv_create("proc_waitcv");	if (proc->p_waitcv == NULL) {
+        lock_destroy(proc->p_waitlock);
+        kfree(proc->p_name);
+        kfree(proc);
+        return NULL;
+	}
+
+	proc->p_exited = false;
+	proc->p_exitcode = 0;
+
 	return proc;
 }
 
@@ -108,6 +131,7 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
+	KASSERT(proc->proc_ft == NULL);
 
 	/*
 	 * We don't take p_lock in here because we must have the only
@@ -169,17 +193,6 @@ proc_destroy(struct proc *proc)
 		as_destroy(as);
 	}
 
-	// Clean up fd
-	for (int fd = 0; fd < OPEN_MAX; fd++) {
-    		struct filetable *ftable = proc->ft[fd];
-    		if (ftable) {
-        		vfs_close(ftable->vn);
-        		if (ftable->lock) lock_destroy(ftable->lock);
-        		kfree(ftable);
-        		proc->ft[fd] = NULL;
-    		}
-	}
-
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
@@ -197,6 +210,7 @@ proc_bootstrap(void)
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
+	pid_bootstrap();
 }
 
 /*
@@ -209,19 +223,23 @@ struct proc *
 proc_create_runprogram(const char *name)
 {
 	struct proc *newproc;
+	int err;
+	pid_t newpid;
 
 	newproc = proc_create(name);
 	if (newproc == NULL) {
 		return NULL;
 	}
 
-	// Init process fd
-	for (int i = 0; i < OPEN_MAX; i++) {
-		newproc->ft[i] = NULL;
+	/* PID */
+	err = pid_alloc(newproc, &newpid);
+	if (err) {
+    		proc_destroy(newproc);
+    		return NULL;
 	}
+	newproc->pid = newpid;
 
 	/* VM fields */
-
 	newproc->p_addrspace = NULL;
 
 	/* VFS fields */
