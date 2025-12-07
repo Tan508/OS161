@@ -228,20 +228,13 @@ complainx(const char *fmt, ...)
 {
 	char buf[256];
 	va_list ap;
-	ssize_t junk;
-	
+
 	va_start(ap, fmt);
 	vscomplain(buf, sizeof(buf), fmt, ap, -1);
 	va_end(ap);
 
 	/* Write the message in one go so it's atomic */
-	junk = write(STDERR_FILENO, buf, strlen(buf));
-
-	/*
-	 * This variable must be assigned and then ignored with some
-	 * (broken) Linux C libraries. Ah, Linux...
-	 */
-	(void)junk;
+	(void)write(STDERR_FILENO, buf, strlen(buf));
 }
 
 static
@@ -250,7 +243,6 @@ complain(const char *fmt, ...)
 {
 	char buf[256];
 	va_list ap;
-	ssize_t junk;
 	int err = errno;
 
 	va_start(ap, fmt);
@@ -258,13 +250,7 @@ complain(const char *fmt, ...)
 	va_end(ap);
 
 	/* Write the message in one go so it's atomic */
-	junk = write(STDERR_FILENO, buf, strlen(buf));
-
-	/*
-	 * This variable must be assigned and then ignored with some
-	 * (broken) Linux C libraries. Ah, Linux...
-	 */
-	(void)junk;
+	(void)write(STDERR_FILENO, buf, strlen(buf));
 }
 
 ////////////////////////////////////////////////////////////

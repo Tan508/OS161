@@ -35,6 +35,8 @@
 
 #include <types.h>
 #include <kern/errno.h>
+#include <kern/wait.h>
+#include <limits.h>
 #include <lib.h>
 #include <array.h>
 #include <cpu.h>
@@ -50,10 +52,7 @@
 #include <addrspace.h>
 #include <mainbus.h>
 #include <vnode.h>
-
-
-#include "opt-synchprobs.h"
-
+#include <pid.h>
 
 
 /* Magic number used as a guard value on kernel thread stacks. */
@@ -761,20 +760,6 @@ thread_startup(void (*entrypoint)(void *data1, unsigned long data2),
 	/* Enable interrupts. */
 	spl0();
 
-//<<<<<<< HEAD
-//=======
-#if OPT_SYNCHPROBS
-	/* Yield a random number of times to get a good mix of threads. */
-	{
-		int i, n;
-		n = random()%161 + random()%161;
-		for (i=0; i<n; i++) {
-			thread_yield();
-		}
-	}
-#endif
-
-//>>>>>>> instructor/synchprobs
 	/* Call the function. */
 	entrypoint(data1, data2);
 
@@ -798,13 +783,13 @@ thread_exit(void)
 
 	cur = curthread;
 
-	/*
-	 * Detach from our process. You might need to move this action
-	 * around, depending on how your wait/exit works.
-	 */
+	/* We should be attached only to the kernel process. */
+	KASSERT(cur->t_proc == kproc);
+
+	/* Detach from the kernel process. */
 	proc_remthread(cur);
 
-	/* Make sure we *are* detached (move this only if you're sure!) */
+	/* Make sure we *are* detached. */
 	KASSERT(cur->t_proc == NULL);
 
 	/* Check the stack guard band. */
@@ -812,7 +797,11 @@ thread_exit(void)
 
 	/* Interrupts off on this processor */
         splhigh();
+
+	/* This doesn't come back... */
 	thread_switch(S_ZOMBIE, NULL, NULL);
+
+	/* ...so if it does, something's wrong. */
 	panic("braaaaaaaiiiiiiiiiiinssssss\n");
 }
 

@@ -30,7 +30,6 @@
 #ifndef _WCHAN_H_
 #define _WCHAN_H_
 
-
 /*
  * Wait channel.
  */

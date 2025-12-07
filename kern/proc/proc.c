@@ -43,15 +43,12 @@
  */
 
 #include <types.h>
+#include <kern/errno.h>
 #include <spl.h>
 #include <proc.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
-#include <kern/limits.h>
-#include <synch.h>
-#include <lib.h>
-#include <vfs.h>
 #include <pid.h>
 #include <filetable.h>
 
@@ -63,6 +60,7 @@ struct proc *kproc;
 /*
  * Create a proc structure.
  */
+static
 struct proc *
 proc_create(const char *name)
 {
@@ -80,34 +78,14 @@ proc_create(const char *name)
 
 	threadarray_init(&proc->p_threads);
 	spinlock_init(&proc->p_lock);
+	proc->p_pid = INVALID_PID;
 
 	/* VM fields */
 	proc->p_addrspace = NULL;
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
-
-	/* PID and FD fields */
-	proc->proc_ft = NULL;
-	proc->pid = 0;
-	proc->ppid = 0;
-
-	proc->p_waitlock = lock_create("proc_waitlock");
-	if (proc->p_waitlock == NULL) {
-        kfree(proc->p_name);
-        kfree(proc);
-        return NULL;
-	}
-
-	proc->p_waitcv = cv_create("proc_waitcv");	if (proc->p_waitcv == NULL) {
-        lock_destroy(proc->p_waitlock);
-        kfree(proc->p_name);
-        kfree(proc);
-        return NULL;
-	}
-
-	proc->p_exited = false;
-	proc->p_exitcode = 0;
+	proc->p_filetable = NULL;
 
 	return proc;
 }
@@ -131,7 +109,6 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc != NULL);
 	KASSERT(proc != kproc);
-	KASSERT(proc->proc_ft == NULL);
 
 	/*
 	 * We don't take p_lock in here because we must have the only
@@ -143,6 +120,10 @@ proc_destroy(struct proc *proc)
 	if (proc->p_cwd) {
 		VOP_DECREF(proc->p_cwd);
 		proc->p_cwd = NULL;
+	}
+	if (proc->p_filetable) {
+		filetable_destroy(proc->p_filetable);
+		proc->p_filetable = NULL;
 	}
 
 	/* VM fields */
@@ -193,6 +174,7 @@ proc_destroy(struct proc *proc)
 		as_destroy(as);
 	}
 
+	KASSERT(proc->p_pid == INVALID_PID);
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
@@ -210,7 +192,7 @@ proc_bootstrap(void)
 	if (kproc == NULL) {
 		panic("proc_create for kproc failed\n");
 	}
-	pid_bootstrap();
+	kproc->p_pid = KERNEL_PID;
 }
 
 /*
@@ -218,28 +200,29 @@ proc_bootstrap(void)
  *
  * It will have no address space and will inherit the current
  * process's (that is, the kernel menu's) current directory.
+ *
+ * It will be given no filetable. The filetable will be initialized in
+ * runprogram().
  */
-struct proc *
-proc_create_runprogram(const char *name)
+int
+proc_create_runprogram(const char *name, struct proc **ret)
 {
 	struct proc *newproc;
-	int err;
-	pid_t newpid;
+	int result;
 
 	newproc = proc_create(name);
 	if (newproc == NULL) {
-		return NULL;
+		return ENOMEM;
 	}
-
-	/* PID */
-	err = pid_alloc(newproc, &newpid);
-	if (err) {
-    		proc_destroy(newproc);
-    		return NULL;
+	/* Get a process ID */
+	result = pid_alloc(&newproc->p_pid);
+	if (result) {
+		proc_destroy(newproc);
+		return result;
 	}
-	newproc->pid = newpid;
 
 	/* VM fields */
+
 	newproc->p_addrspace = NULL;
 
 	/* VFS fields */
@@ -256,7 +239,128 @@ proc_create_runprogram(const char *name)
 	}
 	spinlock_release(&curproc->p_lock);
 
-	return newproc;
+	*ret = newproc;
+	return 0;
+}
+
+/*
+ * Clone the current process.
+ *
+ * The new thread is given a copy of the caller's file handles if RET
+ * is not null. (If RET is null, what we're creating is a kernel-only
+ * thread and it doesn't need an address space or file handles.)
+ * However, the new thread always inherits its current working
+ * directory from the caller. The new thread is given no address space
+ * (the caller decides that).
+ */
+int
+proc_fork(struct proc **ret)
+{
+	struct proc *newproc;
+	struct addrspace *as;
+	struct filetable *tbl;
+	int result;
+
+	newproc = proc_create(curproc->p_name);
+	if (newproc == NULL) {
+		return ENOMEM;
+	}
+	/* Get a process ID */
+	result = pid_alloc(&newproc->p_pid);
+	if (result) {
+		proc_destroy(newproc);
+		return result;
+	}
+
+#if 0 /* not yet */
+	/*
+	 * If the caller doesn't want to collect the exit status,
+	 * detach the new thread with pid_disown.
+	 */
+	if (...) {
+		pid_disown(newproc->p_pid);
+	}
+#endif
+
+	/* VM fields */
+	as = proc_getas();
+	if (as != NULL) {
+		result = as_copy(as, &newproc->p_addrspace);
+		if (result) {
+			pid_unalloc(newproc->p_pid);
+			newproc->p_pid = INVALID_PID;
+			proc_destroy(newproc);
+			return result;
+		}
+	}
+
+	/* VFS fields */
+	tbl = curproc->p_filetable;
+	if (tbl != NULL) {
+		result = filetable_copy(tbl, &newproc->p_filetable);
+		if (result) {
+			as_destroy(newproc->p_addrspace);
+			newproc->p_addrspace = NULL;
+			pid_unalloc(newproc->p_pid);
+			newproc->p_pid = INVALID_PID;
+			proc_destroy(newproc);
+			return result;
+		}
+	}
+
+	/*
+	 * Lock the current process to copy its current directory.
+	 * (We don't need to lock the new process, though, as we have
+	 * the only reference to it.)
+	 */
+	spinlock_acquire(&curproc->p_lock);
+	if (curproc->p_cwd != NULL) {
+		VOP_INCREF(curproc->p_cwd);
+		newproc->p_cwd = curproc->p_cwd;
+	}
+	spinlock_release(&curproc->p_lock);
+
+	*ret = newproc;
+	return 0;
+}
+
+/*
+ * Undo proc_fork if nothing's run in the new process yet.
+ */
+void
+proc_unfork(struct proc *newproc)
+{
+	pid_unalloc(newproc->p_pid);
+	newproc->p_pid = INVALID_PID;
+	proc_destroy(newproc);
+}
+
+/*
+ * Make the current process exit.
+ */
+void
+proc_exit(int status)
+{
+	struct proc *proc = curproc;
+
+	/* The kernel isn't supposed to exit. */
+	KASSERT(proc != kproc);
+
+	/* Set exit status and wake up anyone waiting for us. */
+	pid_setexitstatus(status);
+
+	/* Detach from the process and attach to the kernel process. */
+	KASSERT(curthread->t_proc == proc);
+	proc_remthread(curthread);
+	proc_addthread(kproc, curthread);
+
+	/* There should be no threads left in the target process. */
+	KASSERT(threadarray_num(&proc->p_threads) == 0);
+
+	/* Now we can destroy the process. */
+	proc_destroy(proc);
+
+	thread_exit();
 }
 
 /*

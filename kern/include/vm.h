@@ -44,6 +44,23 @@
 #define VM_FAULT_WRITE       1    /* A write was attempted */
 #define VM_FAULT_READONLY    2    /* A write to a readonly page was attempted*/
 
+struct addrspace;  /* from <addrspace.h> */
+struct spinlock;
+
+struct coremap_entry {
+    paddr_t pa;             /* physical address of this frame */
+    bool free;            
+    bool kernel;            
+    struct addrspace *as;   /* owner address space */
+    vaddr_t vaddr;          /* virtual address mapped here */
+    unsigned chunk_len;     /* length of chunk if start of allocation */
+};
+
+extern struct coremap_entry *coremap;
+extern unsigned long coremap_npages;
+extern paddr_t coremap_firstpaddr;
+extern bool coremap_ready;
+extern struct spinlock coremap_lock;
 
 /* Initialization function */
 void vm_bootstrap(void);
@@ -59,5 +76,6 @@ void free_kpages(vaddr_t addr);
 void vm_tlbshootdown_all(void);
 void vm_tlbshootdown(const struct tlbshootdown *);
 
+void vm_free_as(struct addrspace *as);
 
 #endif /* _VM_H_ */

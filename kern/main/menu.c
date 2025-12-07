@@ -31,6 +31,7 @@
 #include <kern/errno.h>
 #include <kern/reboot.h>
 #include <kern/unistd.h>
+#include <kern/wait.h>
 #include <limits.h>
 #include <lib.h>
 #include <uio.h>
@@ -39,12 +40,9 @@
 #include <proc.h>
 #include <vfs.h>
 #include <sfs.h>
+#include <pid.h>
 #include <syscall.h>
 #include <test.h>
-//<<<<<<< HEAD
-//=======
-#include "opt-synchprobs.h"
-//>>>>>>> instructor/synchprobs
 #include "opt-sfs.h"
 #include "opt-net.h"
 
@@ -91,26 +89,18 @@ cmd_progthread(void *ptr, unsigned long nargs)
 	strcpy(progname, args[0]);
 
 	result = runprogram(progname);
-	if (result) {
-		kprintf("Running program %s failed: %s\n", args[0],
-			strerror(result));
-		return;
-	}
 
-	/* NOTREACHED: runprogram only returns on error. */
+	/* runprogram only returns on error. */
+	KASSERT(result != 0);
+
+	kprintf("Running program %s failed: %s\n", args[0],
+		strerror(result));
+	proc_exit(_MKWAIT_EXIT(1));
+	thread_exit();
 }
 
 /*
  * Common code for cmd_prog and cmd_shell.
- *
- * Note that this does not wait for the subprogram to finish, but
- * returns immediately to the menu. This is usually not what you want,
- * so you should have it call your system-calls-assignment waitpid
- * code after forking.
- *
- * Also note that because the subprogram's thread uses the "args"
- * array and strings, until you do this a race condition exists
- * between that code and the menu input code.
  */
 static
 int
@@ -118,20 +108,15 @@ common_prog(int nargs, char **args)
 {
 	struct proc *proc;
 	int result;
+	pid_t childpid;
+	int status;
 
-//<<<<<<< HEAD
-//=======
-#if OPT_SYNCHPROBS
-	kprintf("Warning: this probably won't work with a "
-		"synchronization-problems kernel.\n");
-#endif
-
-//>>>>>>> instructor/synchprobs
 	/* Create a process for the new program to run in. */
-	proc = proc_create_runprogram(args[0] /* name */);
-	if (proc == NULL) {
-		return ENOMEM;
+	result = proc_create_runprogram(args[0] /* name */, &proc);
+	if (result) {
+		return result;
 	}
+	childpid = proc->p_pid;
 
 	result = thread_fork(args[0] /* thread name */,
 			proc /* new process */,
@@ -143,10 +128,19 @@ common_prog(int nargs, char **args)
 		return result;
 	}
 
-	/*
-	 * The new process will be destroyed when the program exits...
-	 * once you write the code for handling that.
-	 */
+	pid_wait(childpid, &status, 0, NULL);
+	if (WIFEXITED(status)) {
+		kprintf("Program (pid %d) exited with status %d\n",
+			childpid, WEXITSTATUS(status));
+	}
+	else if (WIFSIGNALED(status)) {
+		kprintf("Program (pid %d) exited with signal %d\n",
+			childpid, WTERMSIG(status));
+	}
+	else {
+		panic("Program (pid %d) gave strange exit status %d\n",
+		      childpid, status);
+	}
 
 	return 0;
 }
@@ -484,9 +478,10 @@ static const char *testmenu[] = {
 	"[net] Network test                  ",
 #endif
 	"[sy1] Semaphore test                ",
-	"[sy2] Lock test             (1)     ",
-	"[sy3] CV test               (1)     ",
-	"[sy4] CV test #2            (1)     ",
+	"[sy2] Lock test                     ",
+	"[sy3] CV test                       ",
+	"[sy4] CV test #2                    ",
+	"[wt]  waitpid test                  ",
 	"[fs1] Filesystem test               ",
 	"[fs2] FS read stress                ",
 	"[fs3] FS write stress               ",
@@ -504,8 +499,6 @@ cmd_testmenu(int n, char **a)
 	(void)a;
 
 	showmenu("OS/161 tests menu", testmenu);
-	kprintf("    (1) These tests will fail until you finish the "
-		"synch assignment.\n");
 	kprintf("\n");
 
 	return 0;
@@ -514,12 +507,6 @@ cmd_testmenu(int n, char **a)
 static const char *mainmenu[] = {
 	"[?o] Operations menu                ",
 	"[?t] Tests menu                     ",
-//<<<<<<< HEAD
-//=======
-#if OPT_SYNCHPROBS
-	"[sp1] Air Balloon                   ",
-#endif
-//>>>>>>> instructor/synchprobs
 	"[kh] Kernel heap stats              ",
 	"[khgen] Next kernel heap generation ",
 	"[khdump] Dump kernel heap           ",
@@ -536,11 +523,7 @@ cmd_mainmenu(int n, char **a)
 
 	showmenu("OS/161 kernel menu", mainmenu);
 	return 0;
-//<<<<<<< HEAD
-//};
-//=======
 }
-//>>>>>>> instructor/synchprobs
 
 ////////////////////////////////////////
 //
@@ -572,14 +555,6 @@ static struct {
 	{ "exit",	cmd_quit },
 	{ "halt",	cmd_quit },
 
-//<<<<<<< HEAD
-//=======
-#if OPT_SYNCHPROBS
-	/* in-kernel synchronization problem(s) */
-	{ "sp1",	airballoon },
-#endif
-
-//>>>>>>> instructor/synchprobs
 	/* stats */
 	{ "kh",         cmd_kheapstats },
 	{ "khgen",      cmd_kheapgeneration },
@@ -605,6 +580,10 @@ static struct {
 	{ "sy2",	locktest },
 	{ "sy3",	cvtest },
 	{ "sy4",	cvtest2 },
+
+	/* system call assignment tests */
+	/* For testing the wait implementation. */
+	{ "wt",		waittest },
 
 	/* file system assignment tests */
 	{ "fs1",	fstest },

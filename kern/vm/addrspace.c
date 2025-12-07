@@ -32,6 +32,11 @@
 #include <lib.h>
 #include <addrspace.h>
 #include <vm.h>
+#include <proc.h>
+#include <current.h>
+#include <mips/tlb.h>
+#include <spl.h>
+#include <spinlock.h>
 
 /*
  * Note! If OPT_DUMBVM is set, as is the case until you start the VM
@@ -42,16 +47,18 @@
 struct addrspace *
 as_create(void)
 {
-	struct addrspace *as;
-
-	as = kmalloc(sizeof(struct addrspace));
-	if (as == NULL) {
+	struct addrspace *as = kmalloc(sizeof(struct addrspace));
+	if (as==NULL) {
 		return NULL;
 	}
 
+
 	/*
-	 * Initialize as needed.
+	 * Initialize
 	 */
+	as->regions = NULL;
+	as->heap_start = 0;
+	as->heap_end = 0;
 
 	return as;
 }
@@ -66,11 +73,66 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 		return ENOMEM;
 	}
 
-	/*
-	 * Write this.
-	 */
+	/* Copy regions*/
+	newas->regions = NULL;
+	struct region **tail = &newas->regions;
+	for (struct region *curr = old->regions; curr != NULL; curr = curr->next) {
+		struct region *new_region = kmalloc(sizeof(struct region));
+		if (new_region == NULL) {
+			as_destroy(newas);
+			return ENOMEM;
+		}
 
-	(void)old;
+		new_region->vbase = curr->vbase;
+		new_region->npages = curr->npages;
+		new_region->perms = curr->perms;
+		new_region->next = NULL;
+
+		*tail = new_region;
+		tail = &new_region->next;
+	}
+
+	/* Copy heap info */
+	newas->heap_start = old->heap_start;
+	newas->heap_end = old->heap_end;
+
+	/* Copy physicall pages belong to old by scanning the coremap */
+	spinlock_acquire(&coremap_lock);
+
+	for (unsigned long i = 0; i < coremap_npages; i++) {
+		if (!coremap[i].free && coremap[i].as == old && !coremap[i].kernel) {
+			vaddr_t vaddr = coremap[i].vaddr;
+			paddr_t paddr = coremap[i].pa;
+
+			/* Find free cormap slot */
+			unsigned long j;
+			for (j = 0; j < coremap_npages; j++) {
+				if (coremap[j].free) {
+					coremap[j].free      = false;
+					coremap[j].kernel    = false;
+					coremap[j].as        = newas;
+					coremap[j].vaddr     = vaddr;
+					coremap[j].chunk_len = 1;
+					break;
+				}
+			}
+
+			if (j == coremap_npages) {
+				/* No free slot */
+				spinlock_release(&coremap_lock);
+				as_destroy(newas);
+				return ENOMEM;
+			}
+
+			paddr_t pa_new = coremap[j].pa;
+			/* Copy the content */
+			memmove((void *)PADDR_TO_KVADDR(pa_new),
+			        (const void *)PADDR_TO_KVADDR(paddr),
+					PAGE_SIZE);
+		}
+	}
+	
+	spinlock_release(&coremap_lock);
 
 	*ret = newas;
 	return 0;
@@ -79,9 +141,20 @@ as_copy(struct addrspace *old, struct addrspace **ret)
 void
 as_destroy(struct addrspace *as)
 {
-	/*
-	 * Clean up as needed.
-	 */
+	if (as == NULL) {
+		return;
+	}
+
+	/* Free all physical pages belong to this as */
+	vm_free_as(as);
+
+	struct region *curr = as->regions;
+	struct region *next;
+	while (curr != NULL) {
+		next = curr->next;
+		kfree(curr);
+		curr = next;
+	}
 
 	kfree(as);
 }
@@ -91,18 +164,20 @@ as_activate(void)
 {
 	struct addrspace *as;
 
-	as = curproc_getas();
+	as = proc_getas();
 	if (as == NULL) {
-		/*
-		 * Kernel thread without an address space; leave the
-		 * prior address space in place.
-		 */
+		/* Kernel thread without an address space */
 		return;
 	}
 
-	/*
-	 * Write this.
-	 */
+	(void)as;
+
+	/* Flush the TLB */
+	int spl = splhigh();
+	for (int i = 0; i < NUM_TLB; i++) {
+		tlb_write(TLBHI_INVALID(i), TLBLO_INVALID(), i);
+	}
+	splx(spl);
 }
 
 void
@@ -129,26 +204,43 @@ int
 as_define_region(struct addrspace *as, vaddr_t vaddr, size_t sz,
 		 int readable, int writeable, int executable)
 {
-	/*
-	 * Write this.
-	 */
+	/* Align base*/
+	sz += vaddr & ~(vaddr_t)PAGE_FRAME;
+	vaddr &= PAGE_FRAME;
 
-	(void)as;
-	(void)vaddr;
-	(void)sz;
-	(void)readable;
-	(void)writeable;
-	(void)executable;
-	return EUNIMP;
+	/* Align length */
+	sz = (sz + PAGE_SIZE - 1) & PAGE_FRAME;
+	size_t npages = sz / PAGE_SIZE;
+
+	struct region *new_region = kmalloc(sizeof(struct region));
+	if (new_region == NULL) {
+		return ENOMEM;
+	}
+
+	new_region->vbase = vaddr;
+	new_region->npages = npages;
+
+	int perms = 0;
+	if (readable) {
+		perms |= 0x1;
+	}
+	if (writeable) {
+		perms |= 0x2;
+	}
+	if (executable) {
+		perms |= 0x4;
+	}
+
+	new_region->perms = perms;
+	new_region->next = as->regions;
+	as->regions = new_region;
+
+	return 0;
 }
 
 int
 as_prepare_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
-
 	(void)as;
 	return 0;
 }
@@ -156,11 +248,19 @@ as_prepare_load(struct addrspace *as)
 int
 as_complete_load(struct addrspace *as)
 {
-	/*
-	 * Write this.
-	 */
+	/* Find the highest end address among all regions */
+	vaddr_t max_end = 0;
 
-	(void)as;
+	for (struct region *curr = as->regions; curr != NULL; curr = curr->next) {
+		vaddr_t region_end = curr->vbase + curr->npages * PAGE_SIZE;
+		if (region_end > max_end) {
+			max_end = region_end;
+		}
+	}
+
+	/* Initilize heap */
+	as->heap_start = max_end;
+	as->heap_end = max_end;
 	return 0;
 }
 
