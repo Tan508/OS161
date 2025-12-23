@@ -1,0 +1,16 @@
+kgalve01:
+
+tests: 0/60
+
+Compilation error due to modified makefile and hardcoded paths in source files.
+$ bmake install
+mkdir /ubc/ece/home/ugrads/s/swang212/os161/root || true
+mkdir: cannot create directory ‘/ubc/ece/home/ugrads/s/swang212/os161/root’: Permission denied
+(cd ./build/install && tar -cf - .) | (cd /ubc/ece/home/ugrads/s/swang212/os161/root && tar -xvf -)
+/bin/sh: 1: cd: can't cd to /ubc/ece/home/ugrads/s/swang212/os161/root
+*** Error code 2
+
+
+code quality: 39/39
+
+total: 0 + 39 + 1 = 40/100
