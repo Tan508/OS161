@@ -1,16 +1,44 @@
 kgalve01:
 
-tests: 0/60
+tests: 56.5/60
 
-Compilation error due to modified makefile and hardcoded paths in source files.
-$ bmake install
-mkdir /ubc/ece/home/ugrads/s/swang212/os161/root || true
-mkdir: cannot create directory ‘/ubc/ece/home/ugrads/s/swang212/os161/root’: Permission denied
-(cd ./build/install && tar -cf - .) | (cd /ubc/ece/home/ugrads/s/swang212/os161/root && tar -xvf -)
-/bin/sh: 1: cd: can't cd to /ubc/ece/home/ugrads/s/swang212/os161/root
-*** Error code 2
+km1: 10/10
 
+km2: 10/10
+
+km3: 10/10
+
+forktest: 7.5/7.5
+
+multiexec: 7.5/7.5
+
+sbrktest: 3.5/7
+-3.5 
+sbrktest: 6
+This should produce fatal signal 11 (SIGSEGV).
+testbin/sbrktest: FAILED: I didn't crash
+Program (pid 2) exited with status 1
+Operation took 2.877331515 seconds
+OS/161 kernel [? for menu]:
+
+huge: 1/1 
+
+palin: 1/1
+
+matmult: 1/1 
+
+triplemat: 1/1 
+
+quintmat: 1/1 
+
+sort: 1/1 
+
+triplesort: 1/1 
+
+quintsort: 1/1 
 
 code quality: 39/39
 
-total: 0 + 39 + 1 = 40/100
+-5 for git issue (incorrect permission for configure)
+
+total: 51.5 + 39 + 1 = 91.5/100
